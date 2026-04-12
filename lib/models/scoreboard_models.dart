@@ -30,6 +30,7 @@ class MatchSetup {
     required this.p2Name,
     required this.p1Rank,
     required this.p2Rank,
+    required this.p1UserKey,
     required this.p2OpponentKey,
     required this.p1Target,
     required this.p2Target,
@@ -42,6 +43,9 @@ class MatchSetup {
 
   final String p1Name;
   final String p2Name;
+
+  /// アーカイブ用。自分プロフィール（例: meA0001）
+  final String p1UserKey;
 
   /// アーカイブ用。相手を一意に識別（例: billA0001）
   final String p2OpponentKey;

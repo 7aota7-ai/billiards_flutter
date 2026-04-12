@@ -533,11 +533,12 @@ class _MatchOverOverlay extends StatelessWidget {
                   ),
                 );
               },
-              child: Material(
-                color: AppleColors.white,
-                elevation: 18,
-                shadowColor: Colors.black45,
-                borderRadius: BorderRadius.circular(20),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppleColors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: AppleColors.cardShadow,
+                ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
                   child: Column(

@@ -25,12 +25,12 @@ abstract final class AppleColors {
   static const Color navGlass = Color(0xCC000000);
   static const Color focusRing = Color(0x330071E3);
 
-  /// Card shadow: rgba(0,0,0,0.22) 3px 5px 30px
+  /// カード影（設定・スコアボード共通。強すぎない程度）
   static List<BoxShadow> cardShadow = [
     BoxShadow(
-      color: const Color(0x38000000),
-      offset: const Offset(0, 5),
-      blurRadius: 30,
+      color: const Color(0x12000000),
+      offset: const Offset(0, 2),
+      blurRadius: 10,
       spreadRadius: 0,
     ),
   ];

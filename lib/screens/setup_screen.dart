@@ -4,8 +4,12 @@ import 'package:flutter/services.dart';
 import '../models/scoreboard_models.dart';
 import '../models/opponent_record.dart';
 import '../services/opponent_repository.dart';
+import '../services/self_profile_repository.dart';
 import '../theme/apple_theme.dart';
 import 'game_screen.dart';
+
+/// `_LabeledRow` のラベル列幅。入力・リンクの左端を揃える。
+const double _kLabeledContentInset = 52;
 
 class SetupScreen extends StatefulWidget {
   const SetupScreen({super.key});
@@ -16,6 +20,7 @@ class SetupScreen extends StatefulWidget {
 
 class _SetupScreenState extends State<SetupScreen> {
   final _oppRepo = OpponentRepository();
+  final _selfRepo = SelfProfileRepository();
   final _p1Name = TextEditingController(text: 'あなた');
   final _p2Name = TextEditingController(text: '相手');
   final _p2Search = TextEditingController();
@@ -42,15 +47,38 @@ class _SetupScreenState extends State<SetupScreen> {
   @override
   void initState() {
     super.initState();
-    _oppRepo.ensureLoaded().then((_) {
+    Future.wait([
+      _oppRepo.ensureLoaded(),
+      _selfRepo.ensureLoaded(),
+    ]).then((_) {
       if (!mounted) return;
-      setState(_refreshOpponentUi);
+      final self = _selfRepo.load();
+      setState(() {
+        if (self != null) {
+          _p1Name.text = self.displayName;
+          _p1Rank = self.rank;
+        }
+        _refreshOpponentUi();
+      });
     });
   }
 
   void _refreshOpponentUi() {
     _p2SearchResults = _oppRepo.search(_p2Search.text);
     _topCandidates = _oppRepo.topFrequentOrRecent(limit: 3);
+  }
+
+  Future<void> _saveMyProfile() async {
+    await _selfRepo.ensureLoaded();
+    await _selfRepo.saveMyProfile(
+      displayName: _p1Name.text,
+      rank: _p1Rank,
+    );
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('自分の情報を登録しました')),
+    );
   }
 
   void _applyOpponent(OpponentRecord o) {
@@ -194,6 +222,13 @@ class _SetupScreenState extends State<SetupScreen> {
     final p2 = _p2Name.text.trim().isEmpty ? 'P2' : _p2Name.text.trim();
 
     await _oppRepo.ensureLoaded();
+    await _selfRepo.ensureLoaded();
+
+    final p1Key = await _selfRepo.userKeyForMatch(
+      displayName: p1,
+      rank: _p1Rank,
+    );
+
     final String p2Key;
     if (_p2OpponentId != null) {
       p2Key = _p2OpponentId!;
@@ -214,6 +249,7 @@ class _SetupScreenState extends State<SetupScreen> {
       p2Name: p2,
       p1Rank: _p1Rank,
       p2Rank: _p2Rank,
+      p1UserKey: p1Key,
       p2OpponentKey: p2Key,
       p1Target: v1,
       p2Target: v2,
@@ -284,7 +320,41 @@ class _SetupScreenState extends State<SetupScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.only(left: _kLabeledContentInset),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: _saveMyProfile,
+                      child: const Text('自分の情報を登録'),
+                    ),
+                  ),
+                ),
+                Builder(
+                  builder: (context) {
+                    final self = _selfRepo.load();
+                    if (self == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(left: _kLabeledContentInset, top: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'ユーザID: ${self.id}',
+                          style: tt.labelSmall?.copyWith(
+                            color: AppleColors.glyphGraySecondary,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
                 _LabeledRow(
                   label: '相手',
                   child: Row(
@@ -391,95 +461,108 @@ class _SetupScreenState extends State<SetupScreen> {
                     ],
                   ),
                 const SizedBox(height: 14),
-                Text(
-                  '登録済み相手を検索',
-                  style: tt.bodyMedium?.copyWith(
-                    color: AppleColors.textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _p2Search,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          border: OutlineInputBorder(),
-                          hintText: '名前またはユーザID',
+                Padding(
+                  padding: const EdgeInsets.only(left: _kLabeledContentInset),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '登録済み相手を検索',
+                        style: tt.bodyMedium?.copyWith(
+                          color: AppleColors.textSecondary,
+                          fontWeight: FontWeight.w600,
                         ),
-                        onChanged: (_) => setState(_refreshOpponentUi),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    Tooltip(
-                      message: '一覧から選ぶ',
-                      child: IconButton(
-                        style: IconButton.styleFrom(
-                          foregroundColor: AppleColors.appleBlue,
+                      const SizedBox(height: 6),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _p2Search,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                                hintText: '名前またはユーザID',
+                              ),
+                              onChanged: (_) => setState(_refreshOpponentUi),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Tooltip(
+                            message: '一覧から選ぶ',
+                            child: IconButton(
+                              style: IconButton.styleFrom(
+                                foregroundColor: AppleColors.appleBlue,
+                              ),
+                              onPressed: _showOpponentListSheet,
+                              icon: const Icon(Icons.list_alt_rounded),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_p2OpponentId != null) ...[
+                        const SizedBox(height: 6),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: InputChip(
+                            label: Text('ユーザID: $_p2OpponentId'),
+                            onDeleted: () => setState(() => _p2OpponentId = null),
+                          ),
                         ),
-                        onPressed: _showOpponentListSheet,
-                        icon: const Icon(Icons.list_alt_rounded),
+                      ],
+                      if (_p2SearchResults.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 168),
+                          child: Material(
+                            color: AppleColors.lightGray,
+                            borderRadius: BorderRadius.circular(8),
+                            clipBehavior: Clip.antiAlias,
+                            child: ListView.separated(
+                              padding: EdgeInsets.zero,
+                              shrinkWrap: true,
+                              itemCount: _p2SearchResults.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1, thickness: 0.5),
+                              itemBuilder: (context, i) {
+                                final o = _p2SearchResults[i];
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(o.displayName),
+                                  subtitle: Text('${o.id} · ${o.rank.labelJa}'),
+                                  onTap: () => _applyOpponent(o),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () async {
+                            await _oppRepo.ensureLoaded();
+                            final rec = await _oppRepo.registerNew(
+                              displayName: _p2Name.text,
+                              rank: _p2Rank,
+                            );
+                            if (!mounted) return;
+                            setState(() {
+                              _p2OpponentId = rec.id;
+                              _p2Name.text = rec.displayName;
+                              _refreshOpponentUi();
+                            });
+                          },
+                          child: const Text('今の名前・級で新規登録'),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                if (_p2OpponentId != null) ...[
-                  const SizedBox(height: 6),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: InputChip(
-                      label: Text('ユーザID: $_p2OpponentId'),
-                      onDeleted: () => setState(() => _p2OpponentId = null),
-                    ),
-                  ),
-                ],
-                if (_p2SearchResults.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 168),
-                    child: Material(
-                      color: AppleColors.lightGray,
-                      borderRadius: BorderRadius.circular(8),
-                      clipBehavior: Clip.antiAlias,
-                      child: ListView.separated(
-                        padding: EdgeInsets.zero,
-                        shrinkWrap: true,
-                        itemCount: _p2SearchResults.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 1, thickness: 0.5),
-                        itemBuilder: (context, i) {
-                          final o = _p2SearchResults[i];
-                          return ListTile(
-                            dense: true,
-                            title: Text(o.displayName),
-                            subtitle: Text('${o.id} · ${o.rank.labelJa}'),
-                            onTap: () => _applyOpponent(o),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    onPressed: () async {
-                      await _oppRepo.ensureLoaded();
-                      final rec = await _oppRepo.registerNew(
-                        displayName: _p2Name.text,
-                        rank: _p2Rank,
-                      );
-                      if (!mounted) return;
-                      setState(() {
-                        _p2OpponentId = rec.id;
-                        _p2Name.text = rec.displayName;
-                        _refreshOpponentUi();
-                      });
-                    },
-                    child: const Text('今の名前・級で新規登録'),
+                    ],
                   ),
                 ),
               ],
@@ -543,49 +626,72 @@ class _SetupScreenState extends State<SetupScreen> {
                       // 親幅から十分な固定高を決めて 3 枚を必ず表示する
                       final w = constraints.maxWidth;
                       final cardHeight = (128 + w * 0.12).clamp(200.0, 260.0);
+                      const narrowBreak = 600.0;
+                      final narrow = w < narrowBreak;
+
+                      Widget tileA() => SizedBox(
+                            height: cardHeight,
+                            width: narrow ? double.infinity : null,
+                            child: _TimerModeTile(
+                              title: 'A  持ち時間',
+                              subtitle: '各自の持ち時間のあと、1ショットタイマーに切り替わります',
+                              selected: _tab == TimerTabKind.totalThenShot,
+                              onTap: () => setState(() => _tab = TimerTabKind.totalThenShot),
+                            ),
+                          );
+                      Widget tileB() => SizedBox(
+                            height: cardHeight,
+                            width: narrow ? double.infinity : null,
+                            child: _TimerModeTile(
+                              title: 'B  1ショットクロック',
+                              subtitle: '1ショットごとにカウント。一時停止・リセットは相手が操作',
+                              selected: _tab == TimerTabKind.shotClockOnly,
+                              onTap: () => setState(() => _tab = TimerTabKind.shotClockOnly),
+                            ),
+                          );
+                      Widget tileC() => SizedBox(
+                            height: cardHeight,
+                            width: narrow ? double.infinity : null,
+                            child: _TimerModeTile(
+                              title: 'C  制限なし',
+                              subtitle: 'タイマーなしで進行します',
+                              selected: _tab == TimerTabKind.unlimited,
+                              onTap: () => setState(() => _tab = TimerTabKind.unlimited),
+                            ),
+                          );
+
+                      if (narrow) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            tileA(),
+                            const SizedBox(height: 10),
+                            tileB(),
+                            const SizedBox(height: 10),
+                            tileC(),
+                          ],
+                        );
+                      }
+
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.only(right: 4),
-                              child: SizedBox(
-                                height: cardHeight,
-                                child: _TimerModeTile(
-                                  title: 'A  持ち時間',
-                                  subtitle: '各自の持ち時間のあと、1ショットタイマーに切り替わります',
-                                  selected: _tab == TimerTabKind.totalThenShot,
-                                  onTap: () => setState(() => _tab = TimerTabKind.totalThenShot),
-                                ),
-                              ),
+                              child: tileA(),
                             ),
                           ),
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 4),
-                              child: SizedBox(
-                                height: cardHeight,
-                                child: _TimerModeTile(
-                                  title: 'B  1ショットクロック',
-                                  subtitle: '1ショットごとにカウント。一時停止・リセットは相手が操作',
-                                  selected: _tab == TimerTabKind.shotClockOnly,
-                                  onTap: () => setState(() => _tab = TimerTabKind.shotClockOnly),
-                                ),
-                              ),
+                              child: tileB(),
                             ),
                           ),
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.only(left: 4),
-                              child: SizedBox(
-                                height: cardHeight,
-                                child: _TimerModeTile(
-                                  title: 'C  制限なし',
-                                  subtitle: 'タイマーなしで進行します',
-                                  selected: _tab == TimerTabKind.unlimited,
-                                  onTap: () => setState(() => _tab = TimerTabKind.unlimited),
-                                ),
-                              ),
+                              child: tileC(),
                             ),
                           ),
                         ],
