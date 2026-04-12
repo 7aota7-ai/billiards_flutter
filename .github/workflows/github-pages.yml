@@ -26,17 +26,22 @@ jobs:
           channel: stable
           cache: true
 
+      - run: flutter config --enable-web
       - run: flutter pub get
       - name: Build web
-        run: flutter build web --release --base-href="/${{ github.event.repository.name }}/"
+        run: flutter build web --release --base-href="/${{ github.event.repository.name }}/" --no-wasm-dry-run
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: build/web
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
