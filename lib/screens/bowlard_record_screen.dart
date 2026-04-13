@@ -453,16 +453,14 @@ class _BowlardRecordScreenState extends State<BowlardRecordScreen> {
           child: _rollInput(
             controller: _firstBalls[index],
             alignRight: true,
-            hint: '',
-            preview: _markForFirst(firstValue),
+            hint: _markForFirst(firstValue),
           ),
         ),
         Expanded(
           child: _rollInput(
             controller: _secondBalls[index],
             alignRight: true,
-            hint: '',
-            preview: _markForSecond(firstValue, secondValue),
+            hint: _markForSecond(firstValue, secondValue),
           ),
         ),
       ],
@@ -480,32 +478,28 @@ class _BowlardRecordScreenState extends State<BowlardRecordScreen> {
           child: _rollInput(
             controller: _firstBalls[9],
             alignRight: true,
-            hint: '',
-            preview: _markForFirst(f10),
+            hint: _markForFirst(f10),
           ),
         ),
         Expanded(
           child: _rollInput(
             controller: _secondBalls[9],
             alignRight: true,
-            hint: '',
-            preview: _markForSecond(f10, s10),
+            hint: _markForSecond(f10, s10),
           ),
         ),
         Expanded(
           child: _rollInput(
             controller: _bonus1,
             alignRight: true,
-            hint: '',
-            preview: needBonus1 ? '${_parseRoll(_bonus1) ?? 0}' : '',
+            hint: needBonus1 ? '${_parseRoll(_bonus1) ?? 0}' : '',
           ),
         ),
         Expanded(
           child: _rollInput(
             controller: _bonus2,
             alignRight: true,
-            hint: '',
-            preview: needBonus2 ? '${_parseRoll(_bonus2) ?? 0}' : '',
+            hint: needBonus2 ? '${_parseRoll(_bonus2) ?? 0}' : '',
           ),
         ),
       ],
@@ -516,42 +510,29 @@ class _BowlardRecordScreenState extends State<BowlardRecordScreen> {
     required TextEditingController controller,
     required bool alignRight,
     required String hint,
-    required String preview,
   }) {
-    return Stack(
-      children: [
-        TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          textAlign: alignRight ? TextAlign.right : TextAlign.left,
-          style: const TextStyle(color: Colors.transparent, fontSize: 12),
-          cursorColor: AppleColors.nearBlack,
-          decoration: InputDecoration(
-            isDense: true,
-            border: InputBorder.none,
-            hintText: hint,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          ),
-          onChanged: (_) => setState(() {}),
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      textAlign: alignRight ? TextAlign.right : TextAlign.left,
+      style: const TextStyle(
+        color: AppleColors.nearBlack,
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+      ),
+      cursorColor: AppleColors.nearBlack,
+      decoration: InputDecoration(
+        isDense: true,
+        border: InputBorder.none,
+        hintText: hint,
+        hintStyle: const TextStyle(
+          color: AppleColors.glyphGraySecondary,
+          fontWeight: FontWeight.w600,
         ),
-        IgnorePointer(
-          child: Positioned.fill(
-            child: Align(
-              alignment:
-                  alignRight ? Alignment.centerRight : Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Text(
-                  preview,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      ),
+      onChanged: (_) => setState(() {}),
     );
   }
 }
