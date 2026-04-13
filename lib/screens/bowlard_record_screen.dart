@@ -450,11 +450,18 @@ class _BowlardRecordScreenState extends State<BowlardRecordScreen> {
                 child: IgnorePointer(
                   child: TweenAnimationBuilder<double>(
                     tween: Tween(begin: 0, end: 1),
-                    duration: const Duration(milliseconds: 1300),
-                    curve: Curves.easeOutCubic,
+                    duration: const Duration(seconds: 5),
+                    curve: Curves.linear,
                     builder: (context, t, child) {
+                      const fadeInEnd = 0.08; // 0.4s / 5.0s
+                      const fadeOutStart = 0.92; // 4.6s / 5.0s
+                      final opacity = t < fadeInEnd
+                          ? (t / fadeInEnd)
+                          : (t > fadeOutStart
+                              ? ((1 - t) / (1 - fadeOutStart)).clamp(0.0, 1.0)
+                              : 1.0);
                       return Opacity(
-                        opacity: t < 0.75 ? 1 : (1 - ((t - 0.75) / 0.25)),
+                        opacity: opacity,
                         child: child,
                       );
                     },
