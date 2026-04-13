@@ -199,7 +199,8 @@ ThemeData buildAppleTheme() {
         borderRadius: BorderRadius.circular(8),
         borderSide: const BorderSide(color: AppleColors.appleBlue, width: 2),
       ),
-      hintStyle: textTheme.bodyLarge?.copyWith(color: AppleColors.textSecondary),
+      hintStyle:
+          textTheme.bodyLarge?.copyWith(color: AppleColors.textSecondary),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
@@ -244,6 +245,7 @@ PreferredSizeWidget buildAppleGlassAppBar(
   BuildContext context, {
   required String title,
   Widget? leading,
+  List<Widget>? actions,
   bool centerTitle = true,
 }) {
   final titleStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(
@@ -262,6 +264,7 @@ PreferredSizeWidget buildAppleGlassAppBar(
     backgroundColor: Colors.transparent,
     foregroundColor: AppleColors.textOnDark,
     leading: leading,
+    actions: actions,
     title: Text(title, style: titleStyle),
     flexibleSpace: ClipRect(
       child: BackdropFilter(
@@ -302,12 +305,14 @@ class AppleCard extends StatelessWidget {
     this.padding,
     this.backgroundColor,
     this.borderColor,
+    this.borderWidth = 1,
   });
 
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final Color? backgroundColor;
   final Color? borderColor;
+  final double borderWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -319,6 +324,7 @@ class AppleCard extends StatelessWidget {
         boxShadow: AppleColors.cardShadow,
         border: Border.all(
           color: borderColor ?? AppleColors.separator.withValues(alpha: 0.35),
+          width: borderWidth,
         ),
       ),
       padding: padding ?? const EdgeInsets.all(20),

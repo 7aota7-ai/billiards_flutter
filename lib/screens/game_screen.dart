@@ -17,6 +17,8 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   late MatchState _match;
   Timer? _tick;
+  int _startingPlayerB = 0;
+  int _activeTurnPlayerB = 0;
 
   MatchSetup get _s => widget.setup;
 
@@ -24,6 +26,8 @@ class _GameScreenState extends State<GameScreen> {
   void initState() {
     super.initState();
     _match = MatchState(setup: _s, liveTimer: _createInitialTimer());
+    _startingPlayerB = 0;
+    _activeTurnPlayerB = 0;
   }
 
   @override
@@ -141,6 +145,17 @@ class _GameScreenState extends State<GameScreen> {
     if (t is! LiveTimerB) return;
     setState(() {
       _match.turnSwitchCountB++;
+      _activeTurnPlayerB = 1 - _activeTurnPlayerB;
+    });
+  }
+
+  void _setStartingPlayerB(int player) {
+    if (_match.gameOver) return;
+    final t = _match.liveTimer;
+    if (t is! LiveTimerB) return;
+    setState(() {
+      _startingPlayerB = player;
+      _activeTurnPlayerB = player;
     });
   }
 
@@ -251,8 +266,8 @@ class _GameScreenState extends State<GameScreen> {
             _match.setWins[i]++;
             final firstTo = _s.firstToWinSets;
             final totalPlayed = _match.setWins[0] + _match.setWins[1];
-            _match.gameOver = _match.setWins[i] >= firstTo ||
-                totalPlayed >= _s.maxSets;
+            _match.gameOver =
+                _match.setWins[i] >= firstTo || totalPlayed >= _s.maxSets;
             _match.fouls[0] = 0;
             _match.fouls[1] = 0;
             break;
@@ -310,6 +325,8 @@ class _GameScreenState extends State<GameScreen> {
       _match.turnSwitchCountB = 0;
       _match.gameOver = false;
       _match.liveTimer = _createInitialTimer();
+      _startingPlayerB = 0;
+      _activeTurnPlayerB = 0;
     });
   }
 
@@ -332,8 +349,8 @@ class _GameScreenState extends State<GameScreen> {
         _match.setWins[opp]++;
         final firstTo = _s.firstToWinSets;
         final totalPlayed = _match.setWins[0] + _match.setWins[1];
-        _match.gameOver = _match.setWins[opp] >= firstTo ||
-            totalPlayed >= _s.maxSets;
+        _match.gameOver =
+            _match.setWins[opp] >= firstTo || totalPlayed >= _s.maxSets;
       } else if (_match.scores[opp] >= _match.targets[opp]) {
         _match.gameOver = true;
       }
@@ -393,77 +410,85 @@ class _GameScreenState extends State<GameScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
               children: [
-          _TimerSection(
-            match: _match,
-            fmt: _fmt,
-            onBStart: _bStart,
-            onBPause: _bPause,
-            onBResume: _bResume,
-            onBReset: _bReset,
-            onBTurnSwitch: _onTurnSwitchB,
-            onAStartPlayer: _aStartPlayer,
-            onAPause: _aPause,
-            onAShotStart: _aShotStart,
-            onAShotPause: _aShotPause,
-            onAShotResume: _aShotResume,
-            onAShotReset: _aShotReset,
-          ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Flexible(
-                flex: 1,
-                fit: FlexFit.loose,
-                child: _PlayerCard(
+                _TimerSection(
                   match: _match,
-                  playerIndex: 0,
-                  onDelta: _onScoreDelta,
-                  onFoul: _onFoul,
-                  onFoulReset: _onFoulReset,
+                  fmt: _fmt,
+                  onBStart: _bStart,
+                  onBPause: _bPause,
+                  onBResume: _bResume,
+                  onBReset: _bReset,
+                  onBTurnSwitch: _onTurnSwitchB,
+                  onAStartPlayer: _aStartPlayer,
+                  onAPause: _aPause,
+                  onAShotStart: _aShotStart,
+                  onAShotPause: _aShotPause,
+                  onAShotResume: _aShotResume,
+                  onAShotReset: _aShotReset,
                 ),
-              ),
-              const SizedBox(width: 10),
-              Flexible(
-                flex: 1,
-                fit: FlexFit.loose,
-                child: _PlayerCard(
-                  match: _match,
-                  playerIndex: 1,
-                  onDelta: _onScoreDelta,
-                  onFoul: _onFoul,
-                  onFoulReset: _onFoulReset,
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Flexible(
+                      flex: 1,
+                      fit: FlexFit.loose,
+                      child: _PlayerCard(
+                        match: _match,
+                        playerIndex: 0,
+                        isModeB: _match.liveTimer is LiveTimerB,
+                        isStartingPlayerB: _startingPlayerB == 0,
+                        isActiveTurnB: _activeTurnPlayerB == 0,
+                        onSelectStartingB: () => _setStartingPlayerB(0),
+                        onDelta: _onScoreDelta,
+                        onFoul: _onFoul,
+                        onFoulReset: _onFoulReset,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      flex: 1,
+                      fit: FlexFit.loose,
+                      child: _PlayerCard(
+                        match: _match,
+                        playerIndex: 1,
+                        isModeB: _match.liveTimer is LiveTimerB,
+                        isStartingPlayerB: _startingPlayerB == 1,
+                        isActiveTurnB: _activeTurnPlayerB == 1,
+                        onSelectStartingB: () => _setStartingPlayerB(1),
+                        onDelta: _onScoreDelta,
+                        onFoul: _onFoul,
+                        onFoulReset: _onFoulReset,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          if (showSets) ...[
-            const SizedBox(height: 12),
-            _SetSection(
-              match: _match,
-              setup: _s,
-              onNextSet: _nextSet,
-            ),
-          ],
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              OutlinedButton(
-                onPressed: () {
-                  _stopTick();
-                  Navigator.of(context).pop();
-                },
-                child: const Text('設定に戻る'),
-              ),
-              TextButton(
-                onPressed: _resetMatch,
-                style: TextButton.styleFrom(foregroundColor: cs.error),
-                child: const Text('リセット'),
-              ),
-            ],
-          ),
-        ],
+                if (showSets) ...[
+                  const SizedBox(height: 12),
+                  _SetSection(
+                    match: _match,
+                    setup: _s,
+                    onNextSet: _nextSet,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () {
+                        _stopTick();
+                        Navigator.of(context).pop();
+                      },
+                      child: const Text('設定に戻る'),
+                    ),
+                    TextButton(
+                      onPressed: _resetMatch,
+                      style: TextButton.styleFrom(foregroundColor: cs.error),
+                      child: const Text('リセット'),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           if (_match.gameOver)
@@ -540,7 +565,8 @@ class _MatchOverOverlay extends StatelessWidget {
                   boxShadow: AppleColors.cardShadow,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -636,9 +662,7 @@ class _TimerSection extends StatelessWidget {
         mainColor = AppleColors.systemOrange;
       }
 
-      final line1 = t.paused
-          ? '一時停止中'
-          : (r == 0 ? '時間切れ！' : 'カウント中');
+      final line1 = t.paused ? '一時停止中' : (r == 0 ? '時間切れ！' : 'カウント中');
       final sub = '$line1\n攻守交替 ${match.turnSwitchCountB}回';
 
       return _timerCard(
@@ -650,13 +674,15 @@ class _TimerSection extends StatelessWidget {
               letterSpacing: 2,
             ),
         sub: sub,
+        helperText: '攻守交替: 撞き番が交代した時に使用します。',
         actions: [
           if (t.paused) ...[
             FilledButton(
               onPressed: onBResume,
               child: const Text('再開'),
             ),
-            OutlinedButton(onPressed: onBReset, child: const Text('リセット（相手操作）')),
+            OutlinedButton(
+                onPressed: onBReset, child: const Text('リセット（相手操作）')),
             OutlinedButton(
               onPressed: match.gameOver ? null : onBTurnSwitch,
               child: const Text('攻守交替'),
@@ -666,7 +692,8 @@ class _TimerSection extends StatelessWidget {
               onPressed: onBStart,
               child: const Text('スタート'),
             ),
-            OutlinedButton(onPressed: onBReset, child: const Text('リセット（相手操作）')),
+            OutlinedButton(
+                onPressed: onBReset, child: const Text('リセット（相手操作）')),
             OutlinedButton(
               onPressed: match.gameOver ? null : onBTurnSwitch,
               child: const Text('攻守交替'),
@@ -677,11 +704,13 @@ class _TimerSection extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: AppleColors.nearBlack,
                 foregroundColor: AppleColors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
               child: const Text('一時停止'),
             ),
-            OutlinedButton(onPressed: onBReset, child: const Text('リセット（相手操作）')),
+            OutlinedButton(
+                onPressed: onBReset, child: const Text('リセット（相手操作）')),
             OutlinedButton(
               onPressed: match.gameOver ? null : onBTurnSwitch,
               child: const Text('攻守交替'),
@@ -726,7 +755,8 @@ class _TimerSection extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: AppleColors.nearBlack,
                 foregroundColor: AppleColors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
               child: const Text('一時停止'),
             ),
@@ -745,9 +775,7 @@ class _TimerSection extends StatelessWidget {
         mainColor = AppleColors.systemOrange;
       }
 
-      final sub = t.paused
-          ? '一時停止中'
-          : (r == 0 ? '時間切れ！' : 'カウント中');
+      final sub = t.paused ? '一時停止中' : (r == 0 ? '時間切れ！' : 'カウント中');
 
       return _timerCard(
         context,
@@ -764,24 +792,28 @@ class _TimerSection extends StatelessWidget {
               onPressed: onAShotResume,
               child: const Text('再開'),
             ),
-            OutlinedButton(onPressed: onAShotReset, child: const Text('リセット（相手操作）')),
+            OutlinedButton(
+                onPressed: onAShotReset, child: const Text('リセット（相手操作）')),
           ] else if (!t.running) ...[
             FilledButton(
               onPressed: onAShotStart,
               child: const Text('スタート'),
             ),
-            OutlinedButton(onPressed: onAShotReset, child: const Text('リセット（相手操作）')),
+            OutlinedButton(
+                onPressed: onAShotReset, child: const Text('リセット（相手操作）')),
           ] else ...[
             FilledButton(
               onPressed: onAShotPause,
               style: FilledButton.styleFrom(
                 backgroundColor: AppleColors.nearBlack,
                 foregroundColor: AppleColors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
               child: const Text('一時停止'),
             ),
-            OutlinedButton(onPressed: onAShotReset, child: const Text('リセット（相手操作）')),
+            OutlinedButton(
+                onPressed: onAShotReset, child: const Text('リセット（相手操作）')),
           ],
         ],
       );
@@ -796,6 +828,7 @@ class _TimerSection extends StatelessWidget {
     required String mainText,
     required TextStyle? mainStyle,
     required String sub,
+    String? helperText,
     required List<Widget> actions,
   }) {
     final tt = Theme.of(context).textTheme;
@@ -812,7 +845,8 @@ class _TimerSection extends StatelessWidget {
             ),
             child: Text(
               badge,
-              style: tt.labelLarge?.copyWith(color: AppleColors.glyphGraySecondary),
+              style: tt.labelLarge
+                  ?.copyWith(color: AppleColors.glyphGraySecondary),
             ),
           ),
           const SizedBox(height: 12),
@@ -821,7 +855,8 @@ class _TimerSection extends StatelessWidget {
           Text(
             sub,
             textAlign: TextAlign.center,
-            style: tt.labelLarge?.copyWith(color: AppleColors.glyphGraySecondary, height: 1.35),
+            style: tt.labelLarge
+                ?.copyWith(color: AppleColors.glyphGraySecondary, height: 1.35),
           ),
           if (actions.isNotEmpty) ...[
             const SizedBox(height: 14),
@@ -831,6 +866,16 @@ class _TimerSection extends StatelessWidget {
               alignment: WrapAlignment.center,
               children: actions,
             ),
+            if (helperText != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                helperText,
+                textAlign: TextAlign.center,
+                style: tt.labelMedium?.copyWith(
+                  color: AppleColors.glyphGraySecondary,
+                ),
+              ),
+            ],
           ],
         ],
       ),
@@ -842,6 +887,10 @@ class _PlayerCard extends StatelessWidget {
   const _PlayerCard({
     required this.match,
     required this.playerIndex,
+    required this.isModeB,
+    required this.isStartingPlayerB,
+    required this.isActiveTurnB,
+    required this.onSelectStartingB,
     required this.onDelta,
     required this.onFoul,
     required this.onFoulReset,
@@ -849,6 +898,10 @@ class _PlayerCard extends StatelessWidget {
 
   final MatchState match;
   final int playerIndex;
+  final bool isModeB;
+  final bool isStartingPlayerB;
+  final bool isActiveTurnB;
+  final VoidCallback onSelectStartingB;
   final void Function(int player, int delta) onDelta;
   final void Function(int player) onFoul;
   final void Function(int player) onFoulReset;
@@ -862,12 +915,12 @@ class _PlayerCard extends StatelessWidget {
 
     return AppleCard(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-      backgroundColor: wonThisSet
-          ? AppleColors.systemGreen.withValues(alpha: 0.1)
-          : null,
+      backgroundColor:
+          wonThisSet ? AppleColors.systemGreen.withValues(alpha: 0.1) : null,
       borderColor: wonThisSet
           ? AppleColors.systemGreen.withValues(alpha: 0.45)
-          : null,
+          : (isModeB && isActiveTurnB ? AppleColors.appleBlue : null),
+      borderWidth: isModeB && isActiveTurnB ? 2 : 1,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -893,6 +946,30 @@ class _PlayerCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
+          if (isModeB) ...[
+            const SizedBox(height: 2),
+            TextButton(
+              onPressed: onSelectStartingB,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                foregroundColor: isStartingPlayerB
+                    ? AppleColors.appleBlue
+                    : AppleColors.glyphGraySecondary,
+              ),
+              child: Text(
+                '先攻',
+                style: tt.labelLarge?.copyWith(
+                  fontWeight:
+                      isStartingPlayerB ? FontWeight.w700 : FontWeight.w400,
+                  color: isStartingPlayerB
+                      ? AppleColors.appleBlue
+                      : AppleColors.glyphGraySecondary,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -920,10 +997,10 @@ class _PlayerCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextButton(
-                onPressed:
-                    match.gameOver ? null : () => onFoul(playerIndex),
+                onPressed: match.gameOver ? null : () => onFoul(playerIndex),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -950,7 +1027,8 @@ class _PlayerCard extends StatelessWidget {
                     ? null
                     : () => onFoulReset(playerIndex),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -977,12 +1055,15 @@ class _PlayerCard extends StatelessWidget {
               fontSize: 56,
               fontWeight: FontWeight.w600,
               height: 1.05,
-              color: wonThisSet ? AppleColors.systemGreen : AppleColors.textPrimary,
+              color: wonThisSet
+                  ? AppleColors.systemGreen
+                  : AppleColors.textPrimary,
             ),
           ),
           Text(
             '/ ${match.targets[playerIndex]} 点',
-            style: tt.labelLarge?.copyWith(color: AppleColors.glyphGraySecondary),
+            style:
+                tt.labelLarge?.copyWith(color: AppleColors.glyphGraySecondary),
           ),
           const SizedBox(height: 8),
           Row(
@@ -990,13 +1071,15 @@ class _PlayerCard extends StatelessWidget {
             children: [
               _RoundBtn(
                 label: '−',
-                onPressed: match.gameOver ? null : () => onDelta(playerIndex, -1),
+                onPressed:
+                    match.gameOver ? null : () => onDelta(playerIndex, -1),
               ),
               const SizedBox(width: 10),
               _RoundBtn(
                 label: '＋',
                 filled: true,
-                onPressed: match.gameOver ? null : () => onDelta(playerIndex, 1),
+                onPressed:
+                    match.gameOver ? null : () => onDelta(playerIndex, 1),
               ),
             ],
           ),
@@ -1085,8 +1168,7 @@ class _SetSection extends StatelessWidget {
       }
     }
 
-    final showNext =
-        !match.gameOver &&
+    final showNext = !match.gameOver &&
         match.setResults.length >= match.currentSet &&
         match.setResults[match.currentSet - 1] != null;
 
@@ -1104,7 +1186,8 @@ class _SetSection extends StatelessWidget {
               ),
               Text(
                 info,
-                style: tt.labelLarge?.copyWith(color: AppleColors.textSecondary),
+                style:
+                    tt.labelLarge?.copyWith(color: AppleColors.textSecondary),
               ),
             ],
           ),
@@ -1169,8 +1252,7 @@ class _SetGrid extends StatelessWidget {
       defaultVerticalAlignment: TableCellVerticalAlignment.middle,
       columnWidths: {
         0: const FixedColumnWidth(56),
-        for (var i = 0; i < maxSets; i++)
-          i + 1: const FlexColumnWidth(),
+        for (var i = 0; i < maxSets; i++) i + 1: const FlexColumnWidth(),
       },
       children: [
         TableRow(
@@ -1182,7 +1264,8 @@ class _SetGrid extends StatelessWidget {
                 child: Text(
                   'G$s',
                   textAlign: TextAlign.center,
-                  style: tt.labelLarge?.copyWith(color: AppleColors.glyphGraySecondary),
+                  style: tt.labelLarge
+                      ?.copyWith(color: AppleColors.glyphGraySecondary),
                 ),
               ),
           ],
@@ -1192,7 +1275,8 @@ class _SetGrid extends StatelessWidget {
             children: [
               Text(
                 _shortNameJa(match.names[p]),
-                style: tt.labelLarge?.copyWith(color: AppleColors.textSecondary),
+                style:
+                    tt.labelLarge?.copyWith(color: AppleColors.textSecondary),
                 overflow: TextOverflow.ellipsis,
               ),
               for (var s = 1; s <= maxSets; s++)
@@ -1207,7 +1291,6 @@ class _SetGrid extends StatelessWidget {
       ],
     );
   }
-
 }
 
 String _shortNameJa(String n) {
@@ -1231,7 +1314,8 @@ class _SetCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final r = setIndex < match.setResults.length ? match.setResults[setIndex] : null;
+    final r =
+        setIndex < match.setResults.length ? match.setResults[setIndex] : null;
     final isCurrent =
         setIndex == match.currentSet - 1 && !match.gameOver && r == null;
 
