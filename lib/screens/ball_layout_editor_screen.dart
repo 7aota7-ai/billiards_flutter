@@ -618,12 +618,15 @@ class BilliardsTablePainter extends CustomPainter {
     final paint = Paint()
       ..color = const Color.fromRGBO(255, 255, 255, 0.13)
       ..strokeWidth = 1;
-    for (var i = 1; i <= 7; i++) {
-      final x = felt.left + felt.width * i / 8;
+    final widthIsLong = felt.width >= felt.height;
+    final xDiv = widthIsLong ? 8 : 4;
+    final yDiv = widthIsLong ? 4 : 8;
+    for (var i = 1; i < xDiv; i++) {
+      final x = felt.left + felt.width * i / xDiv;
       canvas.drawLine(Offset(x, felt.top), Offset(x, felt.bottom), paint);
     }
-    for (var j = 1; j <= 3; j++) {
-      final y = felt.top + felt.height * j / 4;
+    for (var j = 1; j < yDiv; j++) {
+      final y = felt.top + felt.height * j / yDiv;
       canvas.drawLine(Offset(felt.left, y), Offset(felt.right, y), paint);
     }
   }
@@ -1409,8 +1412,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    // 画面幅ベースでSPレイアウトへ切り替える（実機/デスクトップ縮小の両方で確認可能）。
-    final usePortraitLayout = media.size.width < 700;
+    // SP縦持ちのみ縦レイアウト。横向き時は幅が狭くても横レイアウトを優先する。
+    final usePortraitLayout =
+        media.orientation == Orientation.portrait && media.size.width < 700;
     return Scaffold(
       appBar: AppBar(
         title: const Text('配置登録エディタ'),
