@@ -310,7 +310,10 @@ class _BowlardRecordScreenState extends State<BowlardRecordScreen> {
     final cumulative = _buildCumulativePreview();
 
     return Scaffold(
-      appBar: buildAppleGlassAppBar(context, title: 'ボーラード記録'),
+      appBar: buildAppleGlassAppBar(
+        context,
+        title: 'ボーラード記録',
+      ),
       body: AppleContentWidth(
         child: Stack(
           children: [

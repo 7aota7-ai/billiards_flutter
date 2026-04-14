@@ -3,13 +3,23 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/scoreboard_models.dart';
+import '../services/game_session_storage.dart';
 import '../theme/apple_theme.dart';
-import 'ball_layout_editor_screen.dart';
+
+class GameScreenArgs {
+  const GameScreenArgs({required this.setup});
+  final MatchSetup setup;
+}
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key, required this.setup});
+  const GameScreen({
+    super.key,
+    required this.setup,
+    this.restoredSession,
+  });
 
   final MatchSetup setup;
+  final GameSessionData? restoredSession;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -26,15 +36,41 @@ class _GameScreenState extends State<GameScreen> {
   @override
   void initState() {
     super.initState();
-    _match = MatchState(setup: _s, liveTimer: _createInitialTimer());
-    _startingPlayerB = 0;
-    _activeTurnPlayerB = 0;
+    final restored = widget.restoredSession;
+    if (restored != null) {
+      _match = restored.match;
+      _startingPlayerB = restored.startingPlayerB;
+      _activeTurnPlayerB = restored.activeTurnPlayerB;
+    } else {
+      _match = MatchState(setup: _s, liveTimer: _createInitialTimer());
+      _startingPlayerB = 0;
+      _activeTurnPlayerB = 0;
+    }
+    _persistSession();
   }
 
   @override
   void dispose() {
     _stopTick();
     super.dispose();
+  }
+
+  void _persistSession() {
+    unawaited(
+      GameSessionStorage.save(
+        setup: _s,
+        match: _match,
+        startingPlayerB: _startingPlayerB,
+        activeTurnPlayerB: _activeTurnPlayerB,
+      ),
+    );
+  }
+
+  void _exitToSetup() {
+    _stopTick();
+    unawaited(GameSessionStorage.clear());
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/setup', (route) => false);
   }
 
   LiveTimer _createInitialTimer() {
@@ -52,6 +88,8 @@ class _GameScreenState extends State<GameScreen> {
           remain: _s.bShotSeconds,
         );
       case TimerTabKind.unlimited:
+        return LiveTimerC();
+      case TimerTabKind.countNine:
         return LiveTimerC();
     }
   }
@@ -71,6 +109,7 @@ class _GameScreenState extends State<GameScreen> {
       }
       onTick();
       setState(() {});
+      _persistSession();
     });
   }
 
@@ -103,6 +142,7 @@ class _GameScreenState extends State<GameScreen> {
         _stopTick();
       }
     });
+    _persistSession();
   }
 
   void _bPause() {
@@ -111,6 +151,7 @@ class _GameScreenState extends State<GameScreen> {
     _stopTick();
     t.running = false;
     t.paused = true;
+    _persistSession();
   }
 
   void _bResume() {
@@ -129,6 +170,7 @@ class _GameScreenState extends State<GameScreen> {
         _stopTick();
       }
     });
+    _persistSession();
   }
 
   void _bReset() {
@@ -138,6 +180,7 @@ class _GameScreenState extends State<GameScreen> {
     t.running = false;
     t.paused = false;
     t.remain = t.shotSec;
+    _persistSession();
   }
 
   void _onTurnSwitchB() {
@@ -148,6 +191,7 @@ class _GameScreenState extends State<GameScreen> {
       _match.turnSwitchCountB++;
       _activeTurnPlayerB = 1 - _activeTurnPlayerB;
     });
+    _persistSession();
   }
 
   void _setStartingPlayerB(int player) {
@@ -158,6 +202,7 @@ class _GameScreenState extends State<GameScreen> {
       _startingPlayerB = player;
       _activeTurnPlayerB = player;
     });
+    _persistSession();
   }
 
   // --- Mode A: total ---
@@ -186,6 +231,7 @@ class _GameScreenState extends State<GameScreen> {
         _stopTick();
       }
     });
+    _persistSession();
   }
 
   void _aPause() {
@@ -194,6 +240,7 @@ class _GameScreenState extends State<GameScreen> {
     if (t.phase != LiveTimerAPhase.total) return;
     _stopTick();
     t.running = false;
+    _persistSession();
   }
 
   // --- Mode A: shot ---
@@ -213,6 +260,7 @@ class _GameScreenState extends State<GameScreen> {
         _stopTick();
       }
     });
+    _persistSession();
   }
 
   void _aShotPause() {
@@ -222,6 +270,7 @@ class _GameScreenState extends State<GameScreen> {
     _stopTick();
     t.running = false;
     t.paused = true;
+    _persistSession();
   }
 
   void _aShotResume() {
@@ -241,6 +290,7 @@ class _GameScreenState extends State<GameScreen> {
         _stopTick();
       }
     });
+    _persistSession();
   }
 
   void _aShotReset() {
@@ -251,6 +301,7 @@ class _GameScreenState extends State<GameScreen> {
     t.running = false;
     t.paused = false;
     t.shotRemain = t.shotSec;
+    _persistSession();
   }
 
   void _onScoreDelta(int player, int delta) {
@@ -288,6 +339,7 @@ class _GameScreenState extends State<GameScreen> {
         _applyGameOverFreeze();
       }
     });
+    _persistSession();
 
     if (!_match.gameOver) {
       final tm = _match.liveTimer;
@@ -297,6 +349,7 @@ class _GameScreenState extends State<GameScreen> {
         _aShotReset();
       }
       setState(() {});
+      _persistSession();
     }
   }
 
@@ -308,6 +361,7 @@ class _GameScreenState extends State<GameScreen> {
       _match.fouls[1] = 0;
       _match.currentSet++;
     });
+    _persistSession();
   }
 
   void _resetMatch() {
@@ -329,6 +383,7 @@ class _GameScreenState extends State<GameScreen> {
       _startingPlayerB = 0;
       _activeTurnPlayerB = 0;
     });
+    _persistSession();
   }
 
   void _onFoul(int player) {
@@ -359,6 +414,7 @@ class _GameScreenState extends State<GameScreen> {
         _applyGameOverFreeze();
       }
     });
+    _persistSession();
 
     if (!_match.gameOver) {
       final tm = _match.liveTimer;
@@ -368,6 +424,7 @@ class _GameScreenState extends State<GameScreen> {
         _aShotReset();
       }
       setState(() {});
+      _persistSession();
     }
   }
 
@@ -378,6 +435,7 @@ class _GameScreenState extends State<GameScreen> {
     setState(() {
       _match.fouls[player] = 0;
     });
+    _persistSession();
   }
 
   String _fmt(int sec) {
@@ -399,10 +457,7 @@ class _GameScreenState extends State<GameScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, size: 18),
           color: AppleColors.textOnDark,
-          onPressed: () {
-            _stopTick();
-            Navigator.of(context).pop();
-          },
+          onPressed: _exitToSetup,
         ),
       ),
       body: Stack(
@@ -479,10 +534,7 @@ class _GameScreenState extends State<GameScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         OutlinedButton(
-                          onPressed: () {
-                            _stopTick();
-                            Navigator.of(context).pop();
-                          },
+                          onPressed: _exitToSetup,
                           child: const Text('設定に戻る'),
                         ),
                         TextButton(
@@ -495,13 +547,7 @@ class _GameScreenState extends State<GameScreen> {
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton(
-                        onPressed: () {
-                          Navigator.of(context).push<void>(
-                            MaterialPageRoute<void>(
-                              builder: (context) => const BallLayoutEditorScreen(),
-                            ),
-                          );
-                        },
+                        onPressed: () => Navigator.of(context).pushNamed('/layout'),
                         child: const Text('配置をメモ'),
                       ),
                     ),
@@ -627,11 +673,7 @@ class _MatchOverOverlay extends StatelessWidget {
               ),
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(
-                      builder: (context) => const BallLayoutEditorScreen(),
-                    ),
-                  );
+                  Navigator.of(context).pushNamed('/layout');
                 },
                 child: const Text('配置を登録'),
               ),

@@ -11,7 +11,7 @@ enum PlayerRank {
 
 }
 
-/// セットアップ画面のタイマータブ（A/B/C）
+/// セットアップ画面のタイマータブ（A/B/C/D）
 enum TimerTabKind {
   /// 持ち時間 → 両者切れ後に 1 ショット
   totalThenShot,
@@ -21,6 +21,9 @@ enum TimerTabKind {
 
   /// 制限なし
   unlimited,
+
+  /// 制限なし（カウントナイン）
+  countNine,
 }
 
 /// 試合開始前の入力一式

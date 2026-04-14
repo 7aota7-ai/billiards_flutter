@@ -6,8 +6,7 @@ import '../models/opponent_record.dart';
 import '../services/opponent_repository.dart';
 import '../services/self_profile_repository.dart';
 import '../theme/apple_theme.dart';
-import 'ball_layout_editor_screen.dart';
-import 'bowlard_record_screen.dart';
+import 'count_nine_screen.dart';
 import 'game_screen.dart';
 
 /// `_LabeledRow` のラベル列幅。入力・リンクの左端を揃える。
@@ -31,7 +30,6 @@ class _SetupScreenState extends State<SetupScreen> {
 
   /// 検索で選んだ既存相手。未設定なら試合開始時に新規採番
   String? _p2OpponentId;
-  List<OpponentRecord> _p2SearchResults = [];
   List<OpponentRecord> _topCandidates = [];
 
   final _t1 = TextEditingController(text: '5');
@@ -66,7 +64,6 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   void _refreshOpponentUi() {
-    _p2SearchResults = _oppRepo.search(_p2Search.text);
     _topCandidates = _oppRepo.topFrequentOrRecent(limit: 3);
   }
 
@@ -264,28 +261,45 @@ class _SetupScreenState extends State<SetupScreen> {
       maxSets: _maxSets,
     );
 
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (context) => GameScreen(setup: setup),
-      ),
-    );
+    if (_tab == TimerTabKind.countNine) {
+      await Navigator.of(context).pushNamed<void>(
+        '/count-nine',
+        arguments: CountNineArgs(
+          p1Name: p1,
+          p2Name: p2,
+          p1Rank: _p1Rank,
+          p2Rank: _p2Rank,
+        ),
+      );
+    } else {
+      await Navigator.of(context).pushNamed<void>(
+        '/scoreboard',
+        arguments: GameScreenArgs(setup: setup),
+      );
+    }
     if (mounted) {
       setState(_refreshOpponentUi);
     }
   }
 
   Future<void> _openBowlardRecord() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (context) => const BowlardRecordScreen(),
-      ),
-    );
+    await Navigator.of(context).pushNamed<void>('/bowlard');
   }
 
   Future<void> _openBallLayoutEditor() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (context) => const BallLayoutEditorScreen(),
+    await Navigator.of(context).pushNamed<void>('/layout');
+  }
+
+  Future<void> _openCountNine() async {
+    final p1 = _p1Name.text.trim().isEmpty ? 'あなた' : _p1Name.text.trim();
+    final p2 = _p2Name.text.trim().isEmpty ? '相手' : _p2Name.text.trim();
+    await Navigator.of(context).pushNamed<void>(
+      '/count-nine',
+      arguments: CountNineArgs(
+        p1Name: p1,
+        p2Name: p2,
+        p1Rank: _p1Rank,
+        p2Rank: _p2Rank,
       ),
     );
   }
@@ -299,6 +313,7 @@ class _SetupScreenState extends State<SetupScreen> {
         context,
         title: 'スコアボード設定',
         centerTitle: true,
+        automaticallyImplyLeading: false,
         actions: [
           PopupMenuButton<String>(
             tooltip: 'メニュー',
@@ -308,6 +323,8 @@ class _SetupScreenState extends State<SetupScreen> {
                 await _openBowlardRecord();
               } else if (value == 'layout') {
                 await _openBallLayoutEditor();
+              } else if (value == 'count9') {
+                await _openCountNine();
               }
             },
             itemBuilder: (context) => const [
@@ -318,6 +335,10 @@ class _SetupScreenState extends State<SetupScreen> {
               PopupMenuItem<String>(
                 value: 'layout',
                 child: Text('配置登録エディタ'),
+              ),
+              PopupMenuItem<String>(
+                value: 'count9',
+                child: Text('カウントナイン'),
               ),
             ],
           ),
@@ -459,21 +480,18 @@ class _SetupScreenState extends State<SetupScreen> {
                                 borderRadius: BorderRadius.circular(10),
                                 clipBehavior: Clip.antiAlias,
                                 child: InkWell(
-                                  onTap: () =>
-                                      _applyOpponent(_topCandidates[i]),
+                                  onTap: () => _applyOpponent(_topCandidates[i]),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 8,
                                       vertical: 10,
                                     ),
                                     decoration: BoxDecoration(
-                                      border: Border.all(
-                                          color: AppleColors.separator),
+                                      border: Border.all(color: AppleColors.separator),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
@@ -488,12 +506,10 @@ class _SetupScreenState extends State<SetupScreen> {
                                         Text(
                                           _topCandidates[i].rank.labelJa,
                                           style: tt.labelSmall?.copyWith(
-                                            color:
-                                                AppleColors.glyphGraySecondary,
+                                            color: AppleColors.glyphGraySecondary,
                                           ),
                                         ),
-                                        if (_topCandidates[i].matchCount >
-                                            0) ...[
+                                        if (_topCandidates[i].matchCount > 0) ...[
                                           const SizedBox(height: 4),
                                           Text(
                                             '対戦 ${_topCandidates[i].matchCount}回',
@@ -561,34 +577,6 @@ class _SetupScreenState extends State<SetupScreen> {
                               label: Text('ユーザID: $_p2OpponentId'),
                               onDeleted: () =>
                                   setState(() => _p2OpponentId = null),
-                            ),
-                          ),
-                        ],
-                        if (_p2SearchResults.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxHeight: 168),
-                            child: Material(
-                              color: AppleColors.lightGray,
-                              borderRadius: BorderRadius.circular(8),
-                              clipBehavior: Clip.antiAlias,
-                              child: ListView.separated(
-                                padding: EdgeInsets.zero,
-                                shrinkWrap: true,
-                                itemCount: _p2SearchResults.length,
-                                separatorBuilder: (_, __) =>
-                                    const Divider(height: 1, thickness: 0.5),
-                                itemBuilder: (context, i) {
-                                  final o = _p2SearchResults[i];
-                                  return ListTile(
-                                    dense: true,
-                                    title: Text(o.displayName),
-                                    subtitle:
-                                        Text('${o.id} · ${o.rank.labelJa}'),
-                                    onTap: () => _applyOpponent(o),
-                                  );
-                                },
-                              ),
                             ),
                           ),
                         ],
@@ -680,7 +668,7 @@ class _SetupScreenState extends State<SetupScreen> {
                         // Table+fill は行高0でカードが消えることがあるため、
                         // 親幅から十分な固定高を決めて 3 枚を必ず表示する
                         final w = constraints.maxWidth;
-                        final cardHeight = (128 + w * 0.12).clamp(200.0, 260.0);
+                        final cardHeight = (108 + w * 0.08).clamp(160.0, 220.0);
                         const narrowBreak = 600.0;
                         final narrow = w < narrowBreak;
 
@@ -717,6 +705,17 @@ class _SetupScreenState extends State<SetupScreen> {
                                     () => _tab = TimerTabKind.unlimited),
                               ),
                             );
+                        Widget tileD() => SizedBox(
+                              height: cardHeight,
+                              width: narrow ? double.infinity : null,
+                              child: _TimerModeTile(
+                                title: 'D  制限なし（カウントナイン）',
+                                subtitle: 'カウントナイン専用スコア入力ページで進行します',
+                                selected: _tab == TimerTabKind.countNine,
+                                onTap: () => setState(
+                                    () => _tab = TimerTabKind.countNine),
+                              ),
+                            );
 
                         if (narrow) {
                           return Column(
@@ -727,6 +726,8 @@ class _SetupScreenState extends State<SetupScreen> {
                               tileB(),
                               const SizedBox(height: 10),
                               tileC(),
+                              const SizedBox(height: 10),
+                              tileD(),
                             ],
                           );
                         }
@@ -751,6 +752,12 @@ class _SetupScreenState extends State<SetupScreen> {
                               child: Padding(
                                 padding: const EdgeInsets.only(left: 4),
                                 child: tileC(),
+                              ),
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: tileD(),
                               ),
                             ),
                           ],
@@ -817,6 +824,15 @@ class _SetupScreenState extends State<SetupScreen> {
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
                         '時間制限なしで進行します。',
+                        style: tt.bodyLarge
+                            ?.copyWith(color: AppleColors.textSecondary),
+                      ),
+                    ),
+                  if (_tab == TimerTabKind.countNine)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'カウントナインページへ移動して対戦します。',
                         style: tt.bodyLarge
                             ?.copyWith(color: AppleColors.textSecondary),
                       ),

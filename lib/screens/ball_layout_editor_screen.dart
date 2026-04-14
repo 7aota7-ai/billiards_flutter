@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../theme/apple_theme.dart';
 
 // --- Game / ball models ---
 
@@ -252,7 +253,7 @@ class TrajectoryGeometry {
   final Offset objControl;
   final bool skipObjPost;
 
-  static double _brNorm(Rect felt) => felt.width * 0.015;
+  static double _brNorm(Rect felt) => felt.width * 0.03;
 
   static Offset _norm(Offset o, Rect felt) =>
       Offset((o.dx - felt.left) / felt.width, (o.dy - felt.top) / felt.height);
@@ -348,8 +349,8 @@ class TrajectoryGeometry {
         ? Offset(-objDirUnit.dy, objDirUnit.dx)
         : tangentPx / tangentLen;
 
-    final cueLen = _rayToFeltEdgePx(contactUsePx, cueDirUnit, felt);
-    final cueAutoEndPx = contactUsePx + cueDirUnit * cueLen;
+    final cueToEdgeLen = _rayToFeltEdgePx(contactUsePx, cueDirUnit, felt);
+    final cueAutoEndPx = contactUsePx + cueDirUnit * cueToEdgeLen;
     final objLen = _rayToFeltEdgePx(contactUsePx, objDirUnit, felt);
     final objAutoEndPx = contactUsePx + objDirUnit * objLen;
     final cueEndPx = cueEndOverrideNorm == null ? cueAutoEndPx : _toPx(cueEndOverrideNorm, felt);
@@ -360,12 +361,14 @@ class TrajectoryGeometry {
         pocketHitPx != null || isNearPocketPx(objEndBasePx, felt) || isNearPocketPx(objCenterPx, felt);
     final objEndPx = pocketHitPx ?? objEndBasePx;
 
-    final cueEdge = _edgeAtPointPx(cueEndPx, felt);
-    final cueHitCushion = cueEdge != null;
+    final cueTravelLen = (cueEndPx - contactUsePx).distance;
+    final cueHitCushion = cueTravelLen >= cueToEdgeLen - 1.0;
+    final cueImpactPx = cueHitCushion ? cueAutoEndPx : cueEndPx;
+    final cueEdge = cueHitCushion ? _edgeAtPointPx(cueImpactPx, felt) : null;
     final cueBounceDir = cueEdge == null ? Offset.zero : _reflect(cueDirUnit, cueEdge);
     final cueBounceLen =
-        cueHitCushion ? _rayToFeltEdgePx(cueEndPx, cueBounceDir, felt) : 0.0;
-    final cueBounceAutoEndPx = cueEndPx + cueBounceDir * cueBounceLen;
+        cueHitCushion ? _rayToFeltEdgePx(cueImpactPx, cueBounceDir, felt) : 0.0;
+    final cueBounceAutoEndPx = cueImpactPx + cueBounceDir * cueBounceLen;
     final cueBounceEndPx =
         cueBounceEndOverrideNorm == null ? cueBounceAutoEndPx : _toPx(cueBounceEndOverrideNorm, felt);
     final objEdge = _edgeAtPointPx(objEndPx, felt);
@@ -542,12 +545,15 @@ class BilliardsTablePainter extends CustomPainter {
   static List<Offset> pocketCentersForFeltRect(Rect felt) {
     final w = felt.width;
     final h = felt.height;
+    final widthIsLong = w >= h;
+    final sideMidA = widthIsLong ? Offset(w / 2, 0) : Offset(0, h / 2);
+    final sideMidB = widthIsLong ? Offset(w / 2, h) : Offset(w, h / 2);
     return [
       Offset(0, 0),
-      Offset(w / 2, 0),
+      sideMidA,
       Offset(w, 0),
       Offset(0, h),
-      Offset(w / 2, h),
+      sideMidB,
       Offset(w, h),
     ];
   }
@@ -633,10 +639,19 @@ class BilliardsTablePainter extends CustomPainter {
 
   void _drawSpots(Canvas canvas, Rect felt) {
     final paint = Paint()..color = Colors.white.withValues(alpha: 0.9);
-    final cy = felt.center.dy;
-    for (final q in [0.25, 0.5, 0.75]) {
-      final ox = felt.left + felt.width * q;
-      canvas.drawCircle(Offset(ox, cy), 2.5, paint);
+    final widthIsLong = felt.width >= felt.height;
+    if (widthIsLong) {
+      final cy = felt.center.dy;
+      for (final q in [0.25, 0.5, 0.75]) {
+        final ox = felt.left + felt.width * q;
+        canvas.drawCircle(Offset(ox, cy), 2.5, paint);
+      }
+    } else {
+      final cx = felt.center.dx;
+      for (final q in [0.25, 0.5, 0.75]) {
+        final oy = felt.top + felt.height * q;
+        canvas.drawCircle(Offset(cx, oy), 2.5, paint);
+      }
     }
   }
 
@@ -1099,7 +1114,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
   double _ballRadiusPx() {
     if (_felt == Rect.zero) return 8;
-    return _felt.width * 0.015;
+    return math.max(_felt.width * 0.03, 8.0);
   }
 
   void _placeBallRandomOnTable(BallInstance b) {
@@ -1416,8 +1431,17 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     final usePortraitLayout =
         media.orientation == Orientation.portrait && media.size.width < 700;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('配置登録エディタ'),
+      appBar: buildAppleGlassAppBar(
+        context,
+        title: '配置登録エディタ',
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+          color: AppleColors.textOnDark,
+          onPressed: () {
+            Navigator.of(context).pushNamedAndRemoveUntil('/setup', (route) => false);
+          },
+        ),
         actions: [
           IconButton(
             onPressed: _openSavedList,
@@ -1454,20 +1478,40 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   }
 
   Widget _buildPortraitLayout(BuildContext context) {
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        _buildTopControls(dense: true),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-            child: Center(
-              child: _buildTableFitted(aspectRatio: 1 / (2 / 1)),
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          const SizedBox(height: 8),
+          _buildTopControls(dense: true),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(0, 4, 0, 6),
+            child: _buildTableWithFixedHeight(
+              aspectRatio: 1 / (2 / 1),
+              targetHeight: 600,
             ),
           ),
-        ),
-        _buildBottomControls(context, compactInputs: true),
-      ],
+          _buildBottomControls(context, compactInputs: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableWithFixedHeight({
+    required double aspectRatio,
+    required double targetHeight,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = targetHeight;
+        final width = height * aspectRatio;
+        return SizedBox(
+          width: width,
+          height: height,
+          child: Center(
+            child: _buildTableCanvas(Size(width, height)),
+          ),
+        );
+      },
     );
   }
 

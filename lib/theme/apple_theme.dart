@@ -247,6 +247,7 @@ PreferredSizeWidget buildAppleGlassAppBar(
   Widget? leading,
   List<Widget>? actions,
   bool centerTitle = true,
+  bool automaticallyImplyLeading = true,
 }) {
   final titleStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(
         fontSize: 17,
@@ -261,6 +262,7 @@ PreferredSizeWidget buildAppleGlassAppBar(
     elevation: 0,
     scrolledUnderElevation: 0,
     centerTitle: centerTitle,
+    automaticallyImplyLeading: automaticallyImplyLeading,
     backgroundColor: Colors.transparent,
     foregroundColor: AppleColors.textOnDark,
     leading: leading,
