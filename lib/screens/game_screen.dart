@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/scoreboard_models.dart';
 import '../theme/apple_theme.dart';
+import 'ball_layout_editor_screen.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key, required this.setup});
@@ -471,20 +472,38 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    OutlinedButton(
-                      onPressed: () {
-                        _stopTick();
-                        Navigator.of(context).pop();
-                      },
-                      child: const Text('設定に戻る'),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () {
+                            _stopTick();
+                            Navigator.of(context).pop();
+                          },
+                          child: const Text('設定に戻る'),
+                        ),
+                        TextButton(
+                          onPressed: _resetMatch,
+                          style: TextButton.styleFrom(foregroundColor: cs.error),
+                          child: const Text('リセット'),
+                        ),
+                      ],
                     ),
-                    TextButton(
-                      onPressed: _resetMatch,
-                      style: TextButton.styleFrom(foregroundColor: cs.error),
-                      child: const Text('リセット'),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () {
+                          Navigator.of(context).push<void>(
+                            MaterialPageRoute<void>(
+                              builder: (context) => const BallLayoutEditorScreen(),
+                            ),
+                          );
+                        },
+                        child: const Text('配置をメモ'),
+                      ),
                     ),
                   ],
                 ),
@@ -493,12 +512,9 @@ class _GameScreenState extends State<GameScreen> {
           ),
           if (_match.gameOver)
             Positioned.fill(
-              child: IgnorePointer(
-                ignoring: true,
-                child: _MatchOverOverlay(
-                  setup: _s,
-                  match: _match,
-                ),
+              child: _MatchOverOverlay(
+                setup: _s,
+                match: _match,
               ),
             ),
         ],
@@ -537,68 +553,93 @@ class _MatchOverOverlay extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
     final msg = _message();
 
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: Color(0x99000000),
-      ),
-      child: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: const Duration(milliseconds: 420),
-              curve: Curves.easeOutCubic,
-              builder: (context, t, child) {
-                return Opacity(
-                  opacity: t,
-                  child: Transform.scale(
-                    scale: 0.88 + 0.12 * t,
-                    child: child,
-                  ),
-                );
-              },
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppleColors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: AppleColors.cardShadow,
-                ),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '🏆',
-                        style: tt.displaySmall?.copyWith(height: 1),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '試合終了',
-                        style: tt.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: AppleColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        msg,
-                        textAlign: TextAlign.center,
-                        style: tt.titleMedium?.copyWith(
-                          color: AppleColors.appleBlue,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {},
+            child: const ColoredBox(
+              color: Color(0x99000000),
             ),
           ),
         ),
-      ),
+        SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: const Duration(milliseconds: 420),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, t, child) {
+                        return Opacity(
+                          opacity: t,
+                          child: Transform.scale(
+                            scale: 0.88 + 0.12 * t,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: AppleColors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: AppleColors.cardShadow,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '🏆',
+                                style: tt.displaySmall?.copyWith(height: 1),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '試合終了',
+                                style: tt.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppleColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                msg,
+                                textAlign: TextAlign.center,
+                                style: tt.titleMedium?.copyWith(
+                                  color: AppleColors.appleBlue,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (context) => const BallLayoutEditorScreen(),
+                    ),
+                  );
+                },
+                child: const Text('配置を登録'),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

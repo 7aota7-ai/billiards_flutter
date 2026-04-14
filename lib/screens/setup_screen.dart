@@ -6,6 +6,7 @@ import '../models/opponent_record.dart';
 import '../services/opponent_repository.dart';
 import '../services/self_profile_repository.dart';
 import '../theme/apple_theme.dart';
+import 'ball_layout_editor_screen.dart';
 import 'bowlard_record_screen.dart';
 import 'game_screen.dart';
 
@@ -281,6 +282,14 @@ class _SetupScreenState extends State<SetupScreen> {
     );
   }
 
+  Future<void> _openBallLayoutEditor() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => const BallLayoutEditorScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
@@ -297,12 +306,18 @@ class _SetupScreenState extends State<SetupScreen> {
             onSelected: (value) async {
               if (value == 'bowlard') {
                 await _openBowlardRecord();
+              } else if (value == 'layout') {
+                await _openBallLayoutEditor();
               }
             },
             itemBuilder: (context) => const [
               PopupMenuItem<String>(
                 value: 'bowlard',
                 child: Text('ボーラード記録ページ'),
+              ),
+              PopupMenuItem<String>(
+                value: 'layout',
+                child: Text('配置登録エディタ'),
               ),
             ],
           ),
