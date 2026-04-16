@@ -688,7 +688,7 @@ class _SetupScreenState extends State<SetupScreen> {
                               width: narrow ? double.infinity : null,
                               child: _TimerModeTile(
                                 title: 'B  1ショットクロック',
-                                subtitle: '1ショットごとにカウント。一時停止・リセットは相手が操作',
+                                subtitle: '１ショットごとにカウント',
                                 selected: _tab == TimerTabKind.shotClockOnly,
                                 onTap: () => setState(
                                     () => _tab = TimerTabKind.shotClockOnly),
@@ -710,7 +710,7 @@ class _SetupScreenState extends State<SetupScreen> {
                               width: narrow ? double.infinity : null,
                               child: _TimerModeTile(
                                 title: 'D  制限なし（カウントナイン）',
-                                subtitle: 'カウントナイン専用スコア入力ページで進行します',
+                                subtitle: 'カウントナイン専用スコアボード',
                                 selected: _tab == TimerTabKind.countNine,
                                 onTap: () => setState(
                                     () => _tab = TimerTabKind.countNine),

@@ -158,49 +158,87 @@ class _CountNineScreenState extends State<CountNineScreen> {
                   ),
                 ),
               ),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 284,
-                    child: _CountNinePlayerCard(
-                      name: widget.p1Name,
-                      rank: widget.p1Rank,
-                      score: _scores[0],
-                      target: _targets[0],
-                      foulCount: _fouls[0],
-                      isStarter: _breakStarter == 0,
-                      onSelectStarter: _canChangeStarter ? () => _selectStarter(0) : null,
-                      onBallTap: (n) => _onPotBall(0, n),
-                      onBallLongPress: _onBallLongPress,
-                      isBallDisabled: (n) => _disabledBalls.contains(n),
-                      onFoul: () => _onFoul(0),
-                      onFoulReset: () => _resetFoul(0),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow = constraints.maxWidth < 640;
+
+                Widget playerCard({
+                  required String name,
+                  required PlayerRank rank,
+                  required int score,
+                  required int target,
+                  required int foulCount,
+                  required bool isStarter,
+                  required VoidCallback? onSelectStarter,
+                  required ValueChanged<int> onBallTap,
+                  required VoidCallback onFoul,
+                  required VoidCallback onFoulReset,
+                }) {
+                  return _CountNinePlayerCard(
+                    name: name,
+                    rank: rank,
+                    score: score,
+                    target: target,
+                    foulCount: foulCount,
+                    isStarter: isStarter,
+                    onSelectStarter: onSelectStarter,
+                    onBallTap: onBallTap,
+                    onBallLongPress: _onBallLongPress,
+                    isBallDisabled: (n) => _disabledBalls.contains(n),
+                    onFoul: onFoul,
+                    onFoulReset: onFoulReset,
+                  );
+                }
+
+                final first = playerCard(
+                  name: widget.p1Name,
+                  rank: widget.p1Rank,
+                  score: _scores[0],
+                  target: _targets[0],
+                  foulCount: _fouls[0],
+                  isStarter: _breakStarter == 0,
+                  onSelectStarter: _canChangeStarter ? () => _selectStarter(0) : null,
+                  onBallTap: (n) => _onPotBall(0, n),
+                  onFoul: () => _onFoul(0),
+                  onFoulReset: () => _resetFoul(0),
+                );
+                final second = playerCard(
+                  name: widget.p2Name,
+                  rank: widget.p2Rank,
+                  score: _scores[1],
+                  target: _targets[1],
+                  foulCount: _fouls[1],
+                  isStarter: _breakStarter == 1,
+                  onSelectStarter: _canChangeStarter ? () => _selectStarter(1) : null,
+                  onBallTap: (n) => _onPotBall(1, n),
+                  onFoul: () => _onFoul(1),
+                  onFoulReset: () => _resetFoul(1),
+                );
+
+                if (narrow) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      first,
+                      const SizedBox(height: 10),
+                      second,
+                    ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: SizedBox(height: 284, child: first),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SizedBox(
-                    height: 284,
-                    child: _CountNinePlayerCard(
-                      name: widget.p2Name,
-                      rank: widget.p2Rank,
-                      score: _scores[1],
-                      target: _targets[1],
-                      foulCount: _fouls[1],
-                      isStarter: _breakStarter == 1,
-                      onSelectStarter: _canChangeStarter ? () => _selectStarter(1) : null,
-                      onBallTap: (n) => _onPotBall(1, n),
-                      onBallLongPress: _onBallLongPress,
-                      isBallDisabled: (n) => _disabledBalls.contains(n),
-                      onFoul: () => _onFoul(1),
-                      onFoulReset: () => _resetFoul(1),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: SizedBox(height: 284, child: second),
                     ),
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 8),
             Padding(
@@ -310,6 +348,8 @@ class _CountNinePlayerCard extends StatelessWidget {
               children: [
                 Text(
                   name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: tt.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -380,9 +420,11 @@ class _CountNinePlayerCard extends StatelessWidget {
               }),
             ),
             const SizedBox(height: 2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 2,
+              runSpacing: 2,
               children: [
                 TextButton(
                   onPressed: onFoul,
