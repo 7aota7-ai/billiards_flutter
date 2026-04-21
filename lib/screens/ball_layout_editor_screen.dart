@@ -35,7 +35,8 @@ class BallDefinition {
   final bool stripe;
 
   static List<BallDefinition> forMode(GameMode mode) {
-    final cue = const BallDefinition(id: 0, label: '●', fill: Color(0xFFFFFFFF), stripe: false);
+    final cue = const BallDefinition(
+        id: 0, label: '●', fill: Color(0xFFFFFFFF), stripe: false);
     final out = <BallDefinition>[cue];
     for (var i = 1; i <= mode.objectBallCount; i++) {
       out.add(BallDefinition(
@@ -93,7 +94,9 @@ class BallInstance {
     final id = j['id'] as int?;
     if (id == null) return null;
     final defs = BallDefinition.forMode(mode);
-    final def = defs.cast<BallDefinition?>().firstWhere((d) => d!.id == id, orElse: () => null);
+    final def = defs
+        .cast<BallDefinition?>()
+        .firstWhere((d) => d!.id == id, orElse: () => null);
     if (def == null) return null;
     return BallInstance(
       def: def,
@@ -151,7 +154,10 @@ class TrajectoryLine {
         'cueAnchor': {'ox': cueAnchor.dx, 'oy': cueAnchor.dy},
         'objAnchor': {'ox': objAnchor.dx, 'oy': objAnchor.dy},
         if (cueStartOverride != null)
-          'cueStartOverride': {'x': cueStartOverride!.dx, 'y': cueStartOverride!.dy},
+          'cueStartOverride': {
+            'x': cueStartOverride!.dx,
+            'y': cueStartOverride!.dy
+          },
         if (cueEndOverride != null)
           'cueEndOverride': {'x': cueEndOverride!.dx, 'y': cueEndOverride!.dy},
         if (cueBounceEndOverride != null)
@@ -181,29 +187,35 @@ class TrajectoryLine {
       Offset? cueEnd;
       final ce = j['cueEndOverride'];
       if (ce is Map<String, dynamic>) {
-        cueEnd = Offset((ce['x'] as num).toDouble(), (ce['y'] as num).toDouble());
+        cueEnd =
+            Offset((ce['x'] as num).toDouble(), (ce['y'] as num).toDouble());
       }
       Offset? objEnd;
       final oe = j['objEndOverride'];
       if (oe is Map<String, dynamic>) {
-        objEnd = Offset((oe['x'] as num).toDouble(), (oe['y'] as num).toDouble());
+        objEnd =
+            Offset((oe['x'] as num).toDouble(), (oe['y'] as num).toDouble());
       }
       Offset? objBounceEnd;
       final obe = j['objBounceEndOverride'];
       if (obe is Map<String, dynamic>) {
-        objBounceEnd = Offset((obe['x'] as num).toDouble(), (obe['y'] as num).toDouble());
+        objBounceEnd =
+            Offset((obe['x'] as num).toDouble(), (obe['y'] as num).toDouble());
       }
       Offset? cueBounceEnd;
       final cbe = j['cueBounceEndOverride'];
       if (cbe is Map<String, dynamic>) {
-        cueBounceEnd = Offset((cbe['x'] as num).toDouble(), (cbe['y'] as num).toDouble());
+        cueBounceEnd =
+            Offset((cbe['x'] as num).toDouble(), (cbe['y'] as num).toDouble());
       }
       return TrajectoryLine(
         cueBallId: j['cueBallId'] as int,
         objBallId: j['objBallId'] as int,
         contact: Offset((c['x'] as num).toDouble(), (c['y'] as num).toDouble()),
-        cueAnchor: Offset((ca['ox'] as num).toDouble(), (ca['oy'] as num).toDouble()),
-        objAnchor: Offset((oa['ox'] as num).toDouble(), (oa['oy'] as num).toDouble()),
+        cueAnchor:
+            Offset((ca['ox'] as num).toDouble(), (ca['oy'] as num).toDouble()),
+        objAnchor:
+            Offset((oa['ox'] as num).toDouble(), (oa['oy'] as num).toDouble()),
         cueStartOverride: ov,
         cueEndOverride: cueEnd,
         cueBounceEndOverride: cueBounceEnd,
@@ -258,8 +270,8 @@ class TrajectoryGeometry {
   static Offset _norm(Offset o, Rect felt) =>
       Offset((o.dx - felt.left) / felt.width, (o.dy - felt.top) / felt.height);
 
-  static Offset _toPx(Offset norm, Rect felt) =>
-      Offset(felt.left + norm.dx * felt.width, felt.top + norm.dy * felt.height);
+  static Offset _toPx(Offset norm, Rect felt) => Offset(
+      felt.left + norm.dx * felt.width, felt.top + norm.dy * felt.height);
 
   /// Returns true if [norm] lies within pocket capture of any pocket (normalized felt coords).
   static bool isNearPocket(Offset norm, Rect feltNorm) {
@@ -293,7 +305,9 @@ class TrajectoryGeometry {
     final br = _brNorm(felt);
     final cueN = _norm(cueCenterPx, felt);
     final objN = _norm(objCenterPx, felt);
-    final cueStartPx = cueStartOverrideNorm == null ? cueCenterPx : _toPx(cueStartOverrideNorm, felt);
+    final cueStartPx = cueStartOverrideNorm == null
+        ? cueCenterPx
+        : _toPx(cueStartOverrideNorm, felt);
 
     // 初期接触点は「的球 -> 最寄りポケット」方向を基準に置く。
     // これで、手球→的球タップ直後の赤丸が狙いポケット基準の位置になる。
@@ -326,19 +340,23 @@ class TrajectoryGeometry {
     }
     final toPocketPx = nearestPocket - objCenterPx;
     final toPocketLen = toPocketPx.distance;
-    final toPocketUnit = toPocketLen < 1e-9 ? const Offset(0, -1) : toPocketPx / toPocketLen;
+    final toPocketUnit =
+        toPocketLen < 1e-9 ? const Offset(0, -1) : toPocketPx / toPocketLen;
     final contactCorrect = objCenterPx - toPocketUnit * (br * 2);
-    final contactRawPx =
-        contactOverrideNorm == null ? contactCorrect : _toPx(contactOverrideNorm, felt);
+    final contactRawPx = contactOverrideNorm == null
+        ? contactCorrect
+        : _toPx(contactOverrideNorm, felt);
     final fromObjToContact = contactRawPx - objCenterPx;
     final fromObjLen = fromObjToContact.distance;
-    final fromObjUnit = fromObjLen < 1e-9 ? -toPocketUnit : fromObjToContact / fromObjLen;
+    final fromObjUnit =
+        fromObjLen < 1e-9 ? -toPocketUnit : fromObjToContact / fromObjLen;
     // 接触点（赤丸）は常に「的球中心から2R」の接触リング上に置く（めり込み防止）。
     final contactUsePx = objCenterPx + fromObjUnit * (br * 2);
 
     final objDirPx = objCenterPx - contactUsePx;
     final objDirLen = objDirPx.distance;
-    final objDirUnit = objDirLen < 1e-9 ? const Offset(0, 1) : objDirPx / objDirLen;
+    final objDirUnit =
+        objDirLen < 1e-9 ? const Offset(0, 1) : objDirPx / objDirLen;
 
     // 物理則: 同質量球の衝突後、手球速度は「法線方向成分を失い、接線方向のみ残る」。
     // これにより手球進行方向と的球進行方向が常に90度になる。
@@ -353,39 +371,49 @@ class TrajectoryGeometry {
     final cueAutoEndPx = contactUsePx + cueDirUnit * cueToEdgeLen;
     final objLen = _rayToFeltEdgePx(contactUsePx, objDirUnit, felt);
     final objAutoEndPx = contactUsePx + objDirUnit * objLen;
-    final cueEndPx = cueEndOverrideNorm == null ? cueAutoEndPx : _toPx(cueEndOverrideNorm, felt);
-    final objEndBasePx = objEndOverrideNorm == null ? objAutoEndPx : _toPx(objEndOverrideNorm, felt);
+    final cueEndPx = cueEndOverrideNorm == null
+        ? cueAutoEndPx
+        : _toPx(cueEndOverrideNorm, felt);
+    final objEndBasePx = objEndOverrideNorm == null
+        ? objAutoEndPx
+        : _toPx(objEndOverrideNorm, felt);
     // 的球の進路上でポケット捕捉に入る最初の点を検出し、そこで的球ラインを打ち切る。
-    final pocketHitPx = _firstPocketHitOnSegment(contactUsePx, objEndBasePx, felt);
-    final skipObjPost =
-        pocketHitPx != null || isNearPocketPx(objEndBasePx, felt) || isNearPocketPx(objCenterPx, felt);
+    final pocketHitPx =
+        _firstPocketHitOnSegment(contactUsePx, objEndBasePx, felt);
+    final skipObjPost = pocketHitPx != null ||
+        isNearPocketPx(objEndBasePx, felt) ||
+        isNearPocketPx(objCenterPx, felt);
     final objEndPx = pocketHitPx ?? objEndBasePx;
 
     final cueTravelLen = (cueEndPx - contactUsePx).distance;
     final cueHitCushion = cueTravelLen >= cueToEdgeLen - 1.0;
     final cueImpactPx = cueHitCushion ? cueAutoEndPx : cueEndPx;
     final cueEdge = cueHitCushion ? _edgeAtPointPx(cueImpactPx, felt) : null;
-    final cueBounceDir = cueEdge == null ? Offset.zero : _reflect(cueDirUnit, cueEdge);
+    final cueBounceDir =
+        cueEdge == null ? Offset.zero : _reflect(cueDirUnit, cueEdge);
     final cueBounceLen =
         cueHitCushion ? _rayToFeltEdgePx(cueImpactPx, cueBounceDir, felt) : 0.0;
     final cueBounceAutoEndPx = cueImpactPx + cueBounceDir * cueBounceLen;
-    final cueBounceEndPx =
-        cueBounceEndOverrideNorm == null ? cueBounceAutoEndPx : _toPx(cueBounceEndOverrideNorm, felt);
+    final cueBounceEndPx = cueBounceEndOverrideNorm == null
+        ? cueBounceAutoEndPx
+        : _toPx(cueBounceEndOverrideNorm, felt);
     final objEdge = _edgeAtPointPx(objEndPx, felt);
     final objHitCushion = !skipObjPost && objEdge != null;
-    final objBounceDir = objEdge == null ? Offset.zero : _reflect(objDirUnit, objEdge);
+    final objBounceDir =
+        objEdge == null ? Offset.zero : _reflect(objDirUnit, objEdge);
     final objBounceLen =
         objHitCushion ? _rayToFeltEdgePx(objEndPx, objBounceDir, felt) : 0.0;
     final objBounceAutoEndPx = objEndPx + objBounceDir * objBounceLen;
-    final objBounceEndPx =
-        objBounceEndOverrideNorm == null ? objBounceAutoEndPx : _toPx(objBounceEndOverrideNorm, felt);
+    final objBounceEndPx = objBounceEndOverrideNorm == null
+        ? objBounceAutoEndPx
+        : _toPx(objBounceEndOverrideNorm, felt);
 
     final midCuePx = (contactUsePx + cueEndPx) / 2;
     final midObjPx = (contactUsePx + objEndPx) / 2;
-    final cueControlPx =
-        midCuePx + Offset(cueAnchorNorm.dx * felt.width, cueAnchorNorm.dy * felt.height);
-    final objControlPx =
-        midObjPx + Offset(objAnchorNorm.dx * felt.width, objAnchorNorm.dy * felt.height);
+    final cueControlPx = midCuePx +
+        Offset(cueAnchorNorm.dx * felt.width, cueAnchorNorm.dy * felt.height);
+    final objControlPx = midObjPx +
+        Offset(objAnchorNorm.dx * felt.width, objAnchorNorm.dy * felt.height);
 
     return TrajectoryGeometry(
       feltNorm: feltNorm,
@@ -469,7 +497,9 @@ class TrajectoryGeometry {
     final local = BilliardsTablePainter.pocketCentersForFeltRect(
       Rect.fromLTWH(0, 0, felt.width, felt.height),
     );
-    return local.map((c) => Offset(felt.left + c.dx, felt.top + c.dy)).toList(growable: false);
+    return local
+        .map((c) => Offset(felt.left + c.dx, felt.top + c.dy))
+        .toList(growable: false);
   }
 
   static _Edge? _edgeAtPointPx(Offset pointPx, Rect felt) {
@@ -578,8 +608,14 @@ class BilliardsTablePainter extends CustomPainter {
     final felt = feltRect;
     final frameFrac = 0.038;
     final frameW = math.min(size.width, size.height) * frameFrac;
-    final outer = Rect.fromCenter(center: felt.center, width: felt.width + frameW * 4, height: felt.height + frameW * 4);
-    final cushionRect = Rect.fromCenter(center: felt.center, width: felt.width + frameW * 2, height: felt.height + frameW * 2);
+    final outer = Rect.fromCenter(
+        center: felt.center,
+        width: felt.width + frameW * 4,
+        height: felt.height + frameW * 4);
+    final cushionRect = Rect.fromCenter(
+        center: felt.center,
+        width: felt.width + frameW * 2,
+        height: felt.height + frameW * 2);
 
     final frameR = RRect.fromRectAndRadius(outer, const Radius.circular(6));
     canvas.drawRRect(frameR, Paint()..color = frameColor);
@@ -604,7 +640,9 @@ class BilliardsTablePainter extends CustomPainter {
 
     if (label != null) {
       final tp = TextPainter(
-        text: TextSpan(text: label, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+        text: TextSpan(
+            text: label,
+            style: const TextStyle(color: Colors.white54, fontSize: 10)),
         textDirection: TextDirection.ltr,
       )..layout();
       tp.paint(canvas, Offset(felt.left + 4, felt.top + 4));
@@ -655,7 +693,8 @@ class BilliardsTablePainter extends CustomPainter {
     }
   }
 
-  void _drawPockets(Canvas canvas, Rect felt, Rect cushionRect, double chamfer) {
+  void _drawPockets(
+      Canvas canvas, Rect felt, Rect cushionRect, double chamfer) {
     final pr = pocketRadiusForFeltRect(felt);
     final centersLocal = pocketCentersForFeltRect(
       Rect.fromLTWH(0, 0, felt.width, felt.height),
@@ -732,7 +771,8 @@ class TrajectoryPainter extends CustomPainter {
       final obj = ballMap[line.objBallId];
       if (cue == null || obj == null || !cue.onTable || !obj.onTable) continue;
 
-      final prevCueEnd = i > 0 ? _endOfCueShot(lines[i - 1], ballMap, felt) : null;
+      final prevCueEnd =
+          i > 0 ? _endOfCueShot(lines[i - 1], ballMap, felt) : null;
       final geom = TrajectoryGeometry.compute(
         felt: felt,
         cueCenterPx: Offset(
@@ -760,8 +800,10 @@ class TrajectoryPainter extends CustomPainter {
       );
 
       final cStart = Offset(
-        felt.left + (line.cueStartOverride?.dx ?? geom.cueCenter.dx) * felt.width,
-        felt.top + (line.cueStartOverride?.dy ?? geom.cueCenter.dy) * felt.height,
+        felt.left +
+            (line.cueStartOverride?.dx ?? geom.cueCenter.dx) * felt.width,
+        felt.top +
+            (line.cueStartOverride?.dy ?? geom.cueCenter.dy) * felt.height,
       );
       final contact = Offset(
         felt.left + geom.contact.dx * felt.width,
@@ -793,9 +835,12 @@ class TrajectoryPainter extends CustomPainter {
         felt.top + geom.objControl.dy * felt.height,
       );
 
-      final startPx = prevCueEnd != null && line.cueStartOverride == null ? prevCueEnd : cStart;
+      final startPx = prevCueEnd != null && line.cueStartOverride == null
+          ? prevCueEnd
+          : cStart;
 
-      _dashedLine(canvas, startPx, contact, const Color.fromRGBO(255, 255, 255, 0.75), 6, 4);
+      _dashedLine(canvas, startPx, contact,
+          const Color.fromRGBO(255, 255, 255, 0.75), 6, 4);
       _quadArrow(
         canvas,
         contact,
@@ -867,14 +912,17 @@ class TrajectoryPainter extends CustomPainter {
     canvas.restore();
   }
 
-  Offset? _endOfCueShot(TrajectoryLine line, Map<int, BallInstance> balls, Rect felt) {
+  Offset? _endOfCueShot(
+      TrajectoryLine line, Map<int, BallInstance> balls, Rect felt) {
     final cue = balls[line.cueBallId];
     final obj = balls[line.objBallId];
     if (cue == null || obj == null) return null;
     final geom = TrajectoryGeometry.compute(
       felt: felt,
-      cueCenterPx: Offset(felt.left + cue.x * felt.width, felt.top + cue.y * felt.height),
-      objCenterPx: Offset(felt.left + obj.x * felt.width, felt.top + obj.y * felt.height),
+      cueCenterPx: Offset(
+          felt.left + cue.x * felt.width, felt.top + cue.y * felt.height),
+      objCenterPx: Offset(
+          felt.left + obj.x * felt.width, felt.top + obj.y * felt.height),
       contactOverrideNorm: line.contact,
       cueAnchorNorm: line.cueAnchor,
       objAnchorNorm: line.objAnchor,
@@ -890,7 +938,8 @@ class TrajectoryPainter extends CustomPainter {
     );
   }
 
-  void _dashedLine(Canvas c, Offset a, Offset b, Color col, double dash, double gap) {
+  void _dashedLine(
+      Canvas c, Offset a, Offset b, Color col, double dash, double gap) {
     final paint = Paint()
       ..color = col
       ..strokeWidth = 2
@@ -911,8 +960,11 @@ class TrajectoryPainter extends CustomPainter {
     }
   }
 
-  void _quadArrow(Canvas c, Offset a, Offset ctrl, Offset end, Color col, bool emphasize) {
-    final path = Path()..moveTo(a.dx, a.dy)..quadraticBezierTo(ctrl.dx, ctrl.dy, end.dx, end.dy);
+  void _quadArrow(
+      Canvas c, Offset a, Offset ctrl, Offset end, Color col, bool emphasize) {
+    final path = Path()
+      ..moveTo(a.dx, a.dy)
+      ..quadraticBezierTo(ctrl.dx, ctrl.dy, end.dx, end.dy);
     final paint = Paint()
       ..color = col
       ..strokeWidth = emphasize ? 3 : 2
@@ -921,8 +973,12 @@ class TrajectoryPainter extends CustomPainter {
     final tan = end - ctrl;
     final ang = math.atan2(tan.dy, tan.dx);
     final arrowLen = 12.0;
-    final p1 = end - Offset(math.cos(ang - 0.45) * arrowLen, math.sin(ang - 0.45) * arrowLen);
-    final p2 = end - Offset(math.cos(ang + 0.45) * arrowLen, math.sin(ang + 0.45) * arrowLen);
+    final p1 = end -
+        Offset(
+            math.cos(ang - 0.45) * arrowLen, math.sin(ang - 0.45) * arrowLen);
+    final p2 = end -
+        Offset(
+            math.cos(ang + 0.45) * arrowLen, math.sin(ang + 0.45) * arrowLen);
     c.drawPath(
       Path()
         ..moveTo(end.dx, end.dy)
@@ -933,7 +989,8 @@ class TrajectoryPainter extends CustomPainter {
     );
   }
 
-  void _dashPath(Canvas canvas, Path path, Paint paint, double dash, double gap) {
+  void _dashPath(
+      Canvas canvas, Path path, Paint paint, double dash, double gap) {
     final metrics = path.computeMetrics();
     for (final m in metrics) {
       var d = 0.0;
@@ -1063,6 +1120,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   int? _dragObjBounceEndIdx;
 
   final Map<int, DateTime> _lastTap = {};
+  bool _spPreferPortraitTable = true;
 
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
@@ -1103,7 +1161,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         _balls = defs.map((d) {
           final old = byId[d.id];
           if (old != null) {
-            return BallInstance(def: d, x: old.x, y: old.y, onTable: old.onTable);
+            return BallInstance(
+                def: d, x: old.x, y: old.y, onTable: old.onTable);
           }
           return BallInstance(def: d, x: 0.5, y: 0.5, onTable: false);
         }).toList();
@@ -1164,12 +1223,14 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     if (felt == Rect.zero) return;
     final geom = TrajectoryGeometry.compute(
       felt: felt,
-      cueCenterPx: Offset(felt.left + cue.x * felt.width, felt.top + cue.y * felt.height),
-      objCenterPx: Offset(felt.left + obj.x * felt.width, felt.top + obj.y * felt.height),
+      cueCenterPx: Offset(
+          felt.left + cue.x * felt.width, felt.top + cue.y * felt.height),
+      objCenterPx: Offset(
+          felt.left + obj.x * felt.width, felt.top + obj.y * felt.height),
       cueEndOverrideNorm: null,
       cueBounceEndOverrideNorm: null,
       objEndOverrideNorm: null,
-        objBounceEndOverrideNorm: null,
+      objBounceEndOverrideNorm: null,
     );
     Offset? prevEnd;
     if (_lines.isNotEmpty) {
@@ -1177,12 +1238,20 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       final gLast = TrajectoryGeometry.compute(
         felt: felt,
         cueCenterPx: Offset(
-          felt.left + _balls.firstWhere((e) => e.def.id == last.cueBallId).x * felt.width,
-          felt.top + _balls.firstWhere((e) => e.def.id == last.cueBallId).y * felt.height,
+          felt.left +
+              _balls.firstWhere((e) => e.def.id == last.cueBallId).x *
+                  felt.width,
+          felt.top +
+              _balls.firstWhere((e) => e.def.id == last.cueBallId).y *
+                  felt.height,
         ),
         objCenterPx: Offset(
-          felt.left + _balls.firstWhere((e) => e.def.id == last.objBallId).x * felt.width,
-          felt.top + _balls.firstWhere((e) => e.def.id == last.objBallId).y * felt.height,
+          felt.left +
+              _balls.firstWhere((e) => e.def.id == last.objBallId).x *
+                  felt.width,
+          felt.top +
+              _balls.firstWhere((e) => e.def.id == last.objBallId).y *
+                  felt.height,
         ),
         contactOverrideNorm: last.contact,
         cueAnchorNorm: last.cueAnchor,
@@ -1236,7 +1305,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       final surf = Offset(nx, ny) - centerObj;
       final brN = _ballRadiusPx() / math.min(_felt.width, _felt.height);
       final contactRadiusN = (brN * 2).clamp(0.012, 0.24);
-      final dir = surf.distance < 1e-9 ? const Offset(0, -1) : surf / surf.distance;
+      final dir =
+          surf.distance < 1e-9 ? const Offset(0, -1) : surf / surf.distance;
       line.contact = centerObj + dir * contactRadiusN;
       line.cueAnchor = Offset.zero;
       line.objAnchor = Offset.zero;
@@ -1311,8 +1381,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       final obj = _balls.firstWhere((e) => e.def.id == line.objBallId);
       final geom = TrajectoryGeometry.compute(
         felt: felt,
-        cueCenterPx: Offset(felt.left + cue.x * felt.width, felt.top + cue.y * felt.height),
-        objCenterPx: Offset(felt.left + obj.x * felt.width, felt.top + obj.y * felt.height),
+        cueCenterPx: Offset(
+            felt.left + cue.x * felt.width, felt.top + cue.y * felt.height),
+        objCenterPx: Offset(
+            felt.left + obj.x * felt.width, felt.top + obj.y * felt.height),
         contactOverrideNorm: line.contact,
         cueAnchorNorm: line.cueAnchor,
         objAnchorNorm: line.objAnchor,
@@ -1384,7 +1456,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_prefKey) ?? <String>[];
-    final id = '${DateTime.now().millisecondsSinceEpoch}-${math.Random().nextInt(1 << 30)}';
+    final id =
+        '${DateTime.now().millisecondsSinceEpoch}-${math.Random().nextInt(1 << 30)}';
     final created = _formatDateTime(DateTime.now());
     final doc = SavedBallLayout(
       id: id,
@@ -1398,7 +1471,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     list.add(jsonEncode(doc.toJson()));
     await prefs.setStringList(_prefKey, list);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('保存しました')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('保存しました')));
     }
   }
 
@@ -1427,9 +1501,11 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    // SP縦持ちのみ縦レイアウト。横向き時は幅が狭くても横レイアウトを優先する。
-    final usePortraitLayout =
-        media.orientation == Orientation.portrait && media.size.width < 700;
+    final isPhone = media.size.shortestSide < 700;
+    // SPはテーブル向きを手動切替（既定: 縦）。タブレット以上は従来どおり自動。
+    final usePortraitLayout = isPhone
+        ? _spPreferPortraitTable
+        : (media.orientation == Orientation.portrait && media.size.width < 700);
     return Scaffold(
       appBar: buildAppleGlassAppBar(
         context,
@@ -1439,10 +1515,25 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           icon: const Icon(Icons.arrow_back_ios_new, size: 18),
           color: AppleColors.textOnDark,
           onPressed: () {
-            Navigator.of(context).pushNamedAndRemoveUntil('/setup', (route) => false);
+            Navigator.of(context)
+                .pushNamedAndRemoveUntil('/setup', (route) => false);
           },
         ),
         actions: [
+          if (isPhone)
+            IconButton(
+              onPressed: () {
+                setState(() {
+                  _spPreferPortraitTable = !_spPreferPortraitTable;
+                });
+              },
+              icon: Icon(
+                _spPreferPortraitTable
+                    ? Icons.stay_current_landscape
+                    : Icons.stay_current_portrait,
+              ),
+              tooltip: _spPreferPortraitTable ? '横表示に切替' : '縦表示に切替',
+            ),
           IconButton(
             onPressed: _openSavedList,
             icon: const Icon(Icons.inventory_2_outlined),
@@ -1453,12 +1544,37 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       body: SafeArea(
         child: usePortraitLayout
             ? _buildPortraitLayout(context)
-            : _buildLandscapeLayout(context),
+            : _buildLandscapeLayout(context, phoneOptimized: isPhone),
       ),
     );
   }
 
-  Widget _buildLandscapeLayout(BuildContext context) {
+  Widget _buildLandscapeLayout(BuildContext context,
+      {required bool phoneOptimized}) {
+    if (phoneOptimized) {
+      final width = MediaQuery.of(context).size.width;
+      // 横表示時は編集優先でテーブルを大きく表示。必要ならスクロールで全体を確認する。
+      final targetWidth = math.max(width - 24, 860.0);
+      return SingleChildScrollView(
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            _buildTopControls(dense: true),
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: SizedBox(
+                width: targetWidth,
+                height: targetWidth / 2,
+                child: _buildTableCanvas(Size(targetWidth, targetWidth / 2)),
+              ),
+            ),
+            _buildBottomControls(context, compactInputs: true),
+          ],
+        ),
+      );
+    }
     return Column(
       children: [
         const SizedBox(height: 12),
@@ -1556,7 +1672,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                           _trajMode ? const Color(0xFF0A84FF) : Colors.white,
                       foregroundColor:
                           _trajMode ? Colors.white : const Color(0xFF0A84FF),
-                      side: const BorderSide(color: Color(0xFF0A84FF), width: 1),
+                      side:
+                          const BorderSide(color: Color(0xFF0A84FF), width: 1),
                     ),
                   ),
                   onPressed: () => setState(() {
@@ -1581,7 +1698,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                 SizedBox(width: spacing),
                 OutlinedButton(
                   style: buttonStyle,
-                  onPressed: () => setState(() => _applyMode(_mode, resetPositions: true)),
+                  onPressed: () =>
+                      setState(() => _applyMode(_mode, resetPositions: true)),
                   child: const Text('リセット'),
                 ),
                 SizedBox(width: spacing),
@@ -1603,7 +1721,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
-  Widget _buildBottomControls(BuildContext context, {required bool compactInputs}) {
+  Widget _buildBottomControls(BuildContext context,
+      {required bool compactInputs}) {
     return Column(
       children: [
         Container(
@@ -1613,9 +1732,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           child: Text(
             _status,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
           ),
         ),
         SizedBox(
@@ -1779,19 +1898,23 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   Widget _ballPositioned(BallInstance b) {
     final felt = _felt;
     final r = _ballRadiusPx();
-    final left = felt.left + b.x * felt.width - r;
-    final top = felt.top + b.y * felt.height - r;
+    final isPhone = MediaQuery.of(context).size.shortestSide < 700;
+    final hitSize = isPhone ? math.max(r * 2, 44.0) : r * 2;
+    final left = felt.left + b.x * felt.width - (hitSize / 2);
+    final top = felt.top + b.y * felt.height - (hitSize / 2);
     return Positioned(
       left: left,
       top: top,
-      width: r * 2,
-      height: r * 2,
+      width: hitSize,
+      height: hitSize,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onPanDown: (d) => _handleBallPointerDown(b, d.localPosition, d.localPosition),
+        onPanDown: (d) =>
+            _handleBallPointerDown(b, d.localPosition, d.localPosition),
         onPanUpdate: (d) {
           if (!_trajMode && _dragBallId == b.def.id) {
-            final stackBox = _tableStackKey.currentContext?.findRenderObject() as RenderBox?;
+            final stackBox =
+                _tableStackKey.currentContext?.findRenderObject() as RenderBox?;
             if (stackBox != null) {
               _onTablePanUpdate(stackBox.globalToLocal(d.globalPosition));
             }
@@ -1803,8 +1926,14 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         onPanCancel: () {
           _dragBallId = null;
         },
-        child: CustomPaint(
-          painter: _BallPainter(ball: b, radius: r),
+        child: Center(
+          child: SizedBox(
+            width: r * 2,
+            height: r * 2,
+            child: CustomPaint(
+              painter: _BallPainter(ball: b, radius: r),
+            ),
+          ),
         ),
       ),
     );
@@ -1847,7 +1976,8 @@ class _BallPainter extends CustomPainter {
     canvas.drawCircle(c, radius, Paint()..color = fill);
     if (ball.def.stripe) {
       canvas.save();
-      canvas.clipPath(Path()..addOval(Rect.fromCircle(center: c, radius: radius * 0.92)));
+      canvas.clipPath(
+          Path()..addOval(Rect.fromCircle(center: c, radius: radius * 0.92)));
       final band = RRect.fromRectAndCorners(
         Rect.fromCenter(center: c, width: radius * 2.2, height: radius * 0.55),
         topLeft: const Radius.circular(2),
@@ -1932,40 +2062,60 @@ class _SavedLayoutsScreenState extends State<SavedLayoutsScreen> {
   Future<void> _delete(SavedBallLayout doc) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_prefKey) ?? [];
-    final next = raw.where((s) => SavedBallLayout.fromJsonString(s)?.id != doc.id).toList();
+    final next = raw
+        .where((s) => SavedBallLayout.fromJsonString(s)?.id != doc.id)
+        .toList();
     await prefs.setStringList(_prefKey, next);
     await _load();
   }
 
+  void _goBack() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
+    Navigator.of(context).pushNamedAndRemoveUntil('/setup', (route) => false);
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
     return Scaffold(
-      appBar: AppBar(title: const Text('保存した配置')),
-      body: ListView.builder(
-        itemCount: _items.length,
-        itemBuilder: (context, i) {
-          final doc = _items[i];
-          return ListTile(
-            title: Text(doc.tag.isEmpty ? '(無題)' : doc.tag),
-            subtitle: Text('${doc.mode.storageKey}球 · ${doc.createdAt}\n${doc.memo}'),
-            isThreeLine: true,
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: () => _delete(doc),
-            ),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => BallLayoutEditorScreen(initialLayout: doc),
-                ),
-              );
-            },
-          );
-        },
+      appBar: buildAppleGlassAppBar(
+        context,
+        title: '保存した配置',
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+          color: AppleColors.textOnDark,
+          onPressed: _goBack,
+        ),
       ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.builder(
+              itemCount: _items.length,
+              itemBuilder: (context, i) {
+                final doc = _items[i];
+                return ListTile(
+                  title: Text(doc.tag.isEmpty ? '(無題)' : doc.tag),
+                  subtitle: Text(
+                      '${doc.mode.storageKey}球 · ${doc.createdAt}\n${doc.memo}'),
+                  isThreeLine: true,
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => _delete(doc),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            BallLayoutEditorScreen(initialLayout: doc),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
     );
   }
 }
