@@ -26,11 +26,15 @@ class OpponentRepository {
   List<OpponentRecord> search(String query) {
     final q = query.trim().toLowerCase();
     final all = getAll();
-    if (q.isEmpty) return List.of(all)..sort((a, b) => b.createdAtMs.compareTo(a.createdAtMs));
+    if (q.isEmpty) {
+      return List.of(all)
+        ..sort((a, b) => b.createdAtMs.compareTo(a.createdAtMs));
+    }
     return all
         .where(
           (o) =>
-              o.displayName.toLowerCase().contains(q) || o.id.toLowerCase().contains(q),
+              o.displayName.toLowerCase().contains(q) ||
+              o.id.toLowerCase().contains(q),
         )
         .toList()
       ..sort((a, b) => b.createdAtMs.compareTo(a.createdAtMs));
@@ -84,6 +88,15 @@ class OpponentRepository {
       if (o.id == id) return o;
     }
     return null;
+  }
+
+  Future<bool> deleteById(String id) async {
+    await ensureLoaded();
+    final list = getAll();
+    final next = list.where((o) => o.id != id).toList();
+    if (next.length == list.length) return false;
+    await saveAll(next);
+    return true;
   }
 
   /// 試合開始時に呼ぶ。対戦回数と最終対戦日時を更新する。

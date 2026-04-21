@@ -1502,6 +1502,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final isPhone = media.size.shortestSide < 700;
+    final isCompact = media.size.width < 1000;
     // SPはテーブル向きを手動切替（既定: 縦）。タブレット以上は従来どおり自動。
     final usePortraitLayout = isPhone
         ? _spPreferPortraitTable
@@ -1520,7 +1521,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           },
         ),
         actions: [
-          if (isPhone)
+          if (isCompact)
             IconButton(
               onPressed: () {
                 setState(() {
@@ -1552,27 +1553,36 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   Widget _buildLandscapeLayout(BuildContext context,
       {required bool phoneOptimized}) {
     if (phoneOptimized) {
-      final width = MediaQuery.of(context).size.width;
-      // 横表示時は編集優先でテーブルを大きく表示。必要ならスクロールで全体を確認する。
-      final targetWidth = math.max(width - 24, 860.0);
-      return SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            _buildTopControls(dense: true),
-            const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: SizedBox(
-                width: targetWidth,
-                height: targetWidth / 2,
-                child: _buildTableCanvas(Size(targetWidth, targetWidth / 2)),
+      return Column(
+        children: [
+          const SizedBox(height: 10),
+          _buildTopControls(dense: true),
+          const SizedBox(height: 10),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // 横表示時は編集優先で常に十分なサイズを確保し、必要ならパンで追従。
+                  final tableWidth = math.max(constraints.maxWidth, 860.0);
+                  final tableHeight = tableWidth / 2;
+                  return InteractiveViewer(
+                    minScale: 0.85,
+                    maxScale: 2.5,
+                    constrained: false,
+                    boundaryMargin: const EdgeInsets.all(24),
+                    child: SizedBox(
+                      width: tableWidth,
+                      height: tableHeight,
+                      child: _buildTableCanvas(Size(tableWidth, tableHeight)),
+                    ),
+                  );
+                },
               ),
             ),
-            _buildBottomControls(context, compactInputs: true),
-          ],
-        ),
+          ),
+          _buildBottomControls(context, compactInputs: true),
+        ],
       );
     }
     return Column(
@@ -1899,7 +1909,11 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     final felt = _felt;
     final r = _ballRadiusPx();
     final isPhone = MediaQuery.of(context).size.shortestSide < 700;
-    final hitSize = isPhone ? math.max(r * 2, 44.0) : r * 2;
+    final isDraggingThisBall = !_trajMode && _dragBallId == b.def.id;
+    final visualScale = isDraggingThisBall ? 1.45 : 1.0;
+    final visualRadius = r * visualScale;
+    final hitSize =
+        isPhone ? math.max(visualRadius * 2, 44.0) : visualRadius * 2;
     final left = felt.left + b.x * felt.width - (hitSize / 2);
     final top = felt.top + b.y * felt.height - (hitSize / 2);
     return Positioned(
@@ -1927,11 +1941,30 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           _dragBallId = null;
         },
         child: Center(
-          child: SizedBox(
-            width: r * 2,
-            height: r * 2,
-            child: CustomPaint(
-              painter: _BallPainter(ball: b, radius: r),
+          child: AnimatedScale(
+            scale: visualScale,
+            duration: const Duration(milliseconds: 110),
+            curve: Curves.easeOutCubic,
+            child: Container(
+              decoration: BoxDecoration(
+                boxShadow: isDraggingThisBall
+                    ? [
+                        BoxShadow(
+                          color: AppleColors.appleBlue.withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
+                shape: BoxShape.circle,
+              ),
+              child: SizedBox(
+                width: r * 2,
+                height: r * 2,
+                child: CustomPaint(
+                  painter: _BallPainter(ball: b, radius: r),
+                ),
+              ),
             ),
           ),
         ),

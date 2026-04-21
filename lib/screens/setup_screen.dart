@@ -90,6 +90,47 @@ class _SetupScreenState extends State<SetupScreen> {
     });
   }
 
+  Future<void> _deleteOpponent(
+    OpponentRecord opponent, {
+    VoidCallback? onDeletedInSheet,
+  }) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('登録済み相手を削除'),
+          content: Text('「${opponent.displayName}（${opponent.id}）」を削除しますか？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('削除する'),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true) return;
+
+    await _oppRepo.ensureLoaded();
+    final deleted = await _oppRepo.deleteById(opponent.id);
+    if (!mounted || !deleted) return;
+
+    setState(() {
+      if (_p2OpponentId == opponent.id) {
+        _p2OpponentId = null;
+      }
+      _refreshOpponentUi();
+    });
+    onDeletedInSheet?.call();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('削除しました: ${opponent.displayName}')),
+    );
+  }
+
   Future<void> _showOpponentListSheet() async {
     await _oppRepo.ensureLoaded();
     if (!mounted) return;
@@ -172,6 +213,20 @@ class _SetupScreenState extends State<SetupScreen> {
                                     title: Text(o.displayName),
                                     subtitle:
                                         Text('${o.id} · ${o.rank.labelJa}'),
+                                    trailing: IconButton(
+                                      tooltip: 'この登録者を削除',
+                                      icon: const Icon(Icons.delete_outline),
+                                      onPressed: () async {
+                                        await _deleteOpponent(
+                                          o,
+                                          onDeletedInSheet: () {
+                                            all.removeWhere(
+                                                (e) => e.id == o.id);
+                                            applyFilter();
+                                          },
+                                        );
+                                      },
+                                    ),
                                     onTap: () {
                                       Navigator.pop(context);
                                       _applyOpponent(o);
@@ -480,18 +535,21 @@ class _SetupScreenState extends State<SetupScreen> {
                                 borderRadius: BorderRadius.circular(10),
                                 clipBehavior: Clip.antiAlias,
                                 child: InkWell(
-                                  onTap: () => _applyOpponent(_topCandidates[i]),
+                                  onTap: () =>
+                                      _applyOpponent(_topCandidates[i]),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 8,
                                       vertical: 10,
                                     ),
                                     decoration: BoxDecoration(
-                                      border: Border.all(color: AppleColors.separator),
+                                      border: Border.all(
+                                          color: AppleColors.separator),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
@@ -506,10 +564,12 @@ class _SetupScreenState extends State<SetupScreen> {
                                         Text(
                                           _topCandidates[i].rank.labelJa,
                                           style: tt.labelSmall?.copyWith(
-                                            color: AppleColors.glyphGraySecondary,
+                                            color:
+                                                AppleColors.glyphGraySecondary,
                                           ),
                                         ),
-                                        if (_topCandidates[i].matchCount > 0) ...[
+                                        if (_topCandidates[i].matchCount >
+                                            0) ...[
                                           const SizedBox(height: 4),
                                           Text(
                                             '対戦 ${_topCandidates[i].matchCount}回',
