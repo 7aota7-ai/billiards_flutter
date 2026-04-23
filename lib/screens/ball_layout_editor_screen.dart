@@ -1939,7 +1939,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
     final cx = felt.left + b.x * felt.width;
     final cy = felt.top + b.y * felt.height;
-    const lineColor = Color(0x990A84FF);
+    const lineColor = Colors.white;
 
     return Stack(
       children: [
@@ -1963,7 +1963,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             child: CustomPaint(
               painter: _GuideLinePainter(
                 isVertical: true,
-                color: _dragAxisX ? AppleColors.appleBlue : lineColor,
+                color: lineColor,
               ),
             ),
           ),
@@ -1988,7 +1988,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             child: CustomPaint(
               painter: _GuideLinePainter(
                 isVertical: false,
-                color: _dragAxisY ? AppleColors.appleBlue : lineColor,
+                color: lineColor,
               ),
             ),
           ),
@@ -2194,7 +2194,7 @@ class _GuideLinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final p = Paint()
       ..color = color
-      ..strokeWidth = 2.2;
+      ..strokeWidth = 2.0;
     if (isVertical) {
       final x = size.width / 2;
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
