@@ -1107,6 +1107,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   final List<TrajectoryLine> _lines = [];
 
   bool _trajMode = false;
+  bool _trajEditMode = false;
   int? _selCueId;
   String _status = 'ドラッグで移動 / 380ms以内に2回タップでトレイへ';
 
@@ -1120,7 +1121,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   int? _dragObjBounceEndIdx;
 
   final Map<int, DateTime> _lastTap = {};
-  bool _spPreferPortraitTable = true;
+  int? _spAxisBallId;
+  bool _dragAxisX = false;
+  bool _dragAxisY = false;
 
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
@@ -1190,10 +1193,17 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     if (prev != null && now.difference(prev).inMilliseconds <= _doubleTapMs) {
       b.onTable = false;
       _lastTap.remove(b.def.id);
+      if (_spAxisBallId == b.def.id) {
+        _spAxisBallId = null;
+      }
       setState(() => _status = 'トレイに戻しました');
       return;
     }
     if (_trajMode) {
+      if (_trajEditMode) {
+        setState(() => _status = '軌道点編集モード: 点をドラッグして調整');
+        return;
+      }
       if (b.def.id == 0) {
         setState(() {
           _selCueId = 0;
@@ -1213,7 +1223,11 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       }
       return;
     }
+    final isPhone = MediaQuery.of(context).size.shortestSide < 700;
     _dragBallId = b.def.id;
+    if (isPhone) {
+      _spAxisBallId = b.def.id;
+    }
   }
 
   void _addTrajectoryLine(int cueId, int objId) {
@@ -1375,6 +1389,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     _dragObjEndIdx = null;
     _dragObjBounceEndIdx = null;
     final felt = _felt;
+    final isPhone = MediaQuery.of(context).size.shortestSide < 700;
+    final hitContact = isPhone ? 24.0 : 14.0;
+    final hitAnchor = isPhone ? 28.0 : 16.0;
+    final hitEnd = isPhone ? 24.0 : 14.0;
     for (var i = 0; i < _lines.length; i++) {
       final line = _lines[i];
       final cue = _balls.firstWhere((e) => e.def.id == line.cueBallId);
@@ -1422,31 +1440,31 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         felt.left + geom.objBounceEnd.dx * felt.width,
         felt.top + geom.objBounceEnd.dy * felt.height,
       );
-      if ((local - c).distance < 14) {
+      if ((local - c).distance < hitContact) {
         _dragContactIdx = i;
         return;
       }
-      if ((local - cc).distance < 16) {
+      if ((local - cc).distance < hitAnchor) {
         _dragCueAIdx = i;
         return;
       }
-      if ((local - oc).distance < 16) {
+      if ((local - oc).distance < hitAnchor) {
         _dragObjAIdx = i;
         return;
       }
-      if ((local - ce).distance < 14) {
+      if ((local - ce).distance < hitEnd) {
         _dragCueEndIdx = i;
         return;
       }
-      if (geom.cueHitCushion && (local - cbe).distance < 14) {
+      if (geom.cueHitCushion && (local - cbe).distance < hitEnd) {
         _dragCueBounceEndIdx = i;
         return;
       }
-      if ((local - oe).distance < 14) {
+      if ((local - oe).distance < hitEnd) {
         _dragObjEndIdx = i;
         return;
       }
-      if (geom.objHitCushion && (local - obe).distance < 14) {
+      if (geom.objHitCushion && (local - obe).distance < hitEnd) {
         _dragObjBounceEndIdx = i;
         return;
       }
@@ -1502,11 +1520,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final isPhone = media.size.shortestSide < 700;
-    final isCompact = media.size.width < 1000;
-    // SPはテーブル向きを手動切替（既定: 縦）。タブレット以上は従来どおり自動。
-    final usePortraitLayout = isPhone
-        ? _spPreferPortraitTable
-        : (media.orientation == Orientation.portrait && media.size.width < 700);
+    final usePortraitLayout =
+        media.orientation == Orientation.portrait && media.size.width < 700;
     return Scaffold(
       appBar: buildAppleGlassAppBar(
         context,
@@ -1521,20 +1536,6 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           },
         ),
         actions: [
-          if (isCompact)
-            IconButton(
-              onPressed: () {
-                setState(() {
-                  _spPreferPortraitTable = !_spPreferPortraitTable;
-                });
-              },
-              icon: Icon(
-                _spPreferPortraitTable
-                    ? Icons.stay_current_landscape
-                    : Icons.stay_current_portrait,
-              ),
-              tooltip: _spPreferPortraitTable ? '横表示に切替' : '縦表示に切替',
-            ),
           IconButton(
             onPressed: _openSavedList,
             icon: const Icon(Icons.inventory_2_outlined),
@@ -1688,10 +1689,26 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                   ),
                   onPressed: () => setState(() {
                     _trajMode = !_trajMode;
+                    _trajEditMode = false;
                     _selCueId = null;
                     _status = _trajMode ? '軌道モード: 手玉→的球の順にタップ' : 'ドラッグで移動';
                   }),
                   child: const Text('軌道描画'),
+                ),
+                SizedBox(width: spacing),
+                OutlinedButton(
+                  style: buttonStyle,
+                  onPressed: _lines.isEmpty
+                      ? null
+                      : () => setState(() {
+                            _trajMode = true;
+                            _trajEditMode = !_trajEditMode;
+                            _selCueId = null;
+                            _status = _trajEditMode
+                                ? '軌道点編集モード: 赤丸/アンカーをドラッグ'
+                                : '軌道モード: 手玉→的球の順にタップ';
+                          }),
+                  child: Text(_trajEditMode ? '点編集中' : '軌道点編集'),
                 ),
                 SizedBox(width: spacing),
                 OutlinedButton(
@@ -1866,7 +1883,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           child: Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (e) {
-              if (!_trajMode) return;
+              if (!_trajMode || !_trajEditMode) return;
               _pickTrajControl(e.localPosition);
             },
             onPointerMove: (e) {
@@ -1901,7 +1918,113 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           ),
         ),
         ..._balls.where((b) => b.onTable).map((b) => _ballPositioned(b)),
+        if (MediaQuery.of(context).size.shortestSide < 700 &&
+            _spAxisBallId != null &&
+            _dragBallId == null)
+          _buildPhoneAxisGuides(),
       ],
+    );
+  }
+
+  Widget _buildPhoneAxisGuides() {
+    final felt = _felt;
+    if (felt == Rect.zero) return const SizedBox.shrink();
+    final b = _balls.cast<BallInstance?>().firstWhere(
+          (e) => e?.def.id == _spAxisBallId && e!.onTable,
+          orElse: () => null,
+        );
+    if (b == null) return const SizedBox.shrink();
+
+    final cx = felt.left + b.x * felt.width;
+    final cy = felt.top + b.y * felt.height;
+    const lineColor = Color(0x990A84FF);
+
+    return Stack(
+      children: [
+        Positioned(
+          left: cx - 14,
+          top: felt.top,
+          width: 28,
+          height: felt.height,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onPanStart: (_) => setState(() => _dragAxisX = true),
+            onPanUpdate: (d) {
+              final nextX =
+                  ((cx + d.delta.dx - felt.left) / felt.width).clamp(0.0, 1.0);
+              setState(() {
+                b.x = nextX;
+                _dragAxisX = true;
+              });
+            },
+            onPanEnd: (_) => setState(() => _dragAxisX = false),
+            onPanCancel: () => setState(() => _dragAxisX = false),
+            child: CustomPaint(
+              painter: _GuideLinePainter(
+                isVertical: true,
+                color: _dragAxisX ? AppleColors.appleBlue : lineColor,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: felt.left,
+          top: cy - 14,
+          width: felt.width,
+          height: 28,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onPanStart: (_) => setState(() => _dragAxisY = true),
+            onPanUpdate: (d) {
+              final nextY =
+                  ((cy + d.delta.dy - felt.top) / felt.height).clamp(0.0, 1.0);
+              setState(() {
+                b.y = nextY;
+                _dragAxisY = true;
+              });
+            },
+            onPanEnd: (_) => setState(() => _dragAxisY = false),
+            onPanCancel: () => setState(() => _dragAxisY = false),
+            child: CustomPaint(
+              painter: _GuideLinePainter(
+                isVertical: false,
+                color: _dragAxisY ? AppleColors.appleBlue : lineColor,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: cx - 18,
+          top: felt.top - 4,
+          child: _axisHandle('X', _dragAxisX),
+        ),
+        Positioned(
+          left: felt.right - 32,
+          top: cy - 18,
+          child: _axisHandle('Y', _dragAxisY),
+        ),
+      ],
+    );
+  }
+
+  Widget _axisHandle(String axis, bool active) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: active ? AppleColors.appleBlue : AppleColors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppleColors.appleBlue, width: 1.5),
+        boxShadow: AppleColors.cardShadow,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        axis,
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          color: active ? AppleColors.white : AppleColors.appleBlue,
+        ),
+      ),
     );
   }
 
@@ -2056,6 +2179,34 @@ class _BallPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _BallPainter oldDelegate) =>
       oldDelegate.ball != ball || oldDelegate.radius != radius;
+}
+
+class _GuideLinePainter extends CustomPainter {
+  _GuideLinePainter({
+    required this.isVertical,
+    required this.color,
+  });
+
+  final bool isVertical;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 2.2;
+    if (isVertical) {
+      final x = size.width / 2;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
+      return;
+    }
+    final y = size.height / 2;
+    canvas.drawLine(Offset(0, y), Offset(size.width, y), p);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GuideLinePainter oldDelegate) =>
+      oldDelegate.isVertical != isVertical || oldDelegate.color != color;
 }
 
 class SavedLayoutsScreen extends StatefulWidget {
