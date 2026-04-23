@@ -1176,7 +1176,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
   double _ballRadiusPx() {
     if (_felt == Rect.zero) return 8;
-    return math.max(_felt.width * 0.03, 8.0);
+    final isPhone = MediaQuery.of(context).size.shortestSide < 700;
+    final minRadius = isPhone ? 10.5 : 8.0;
+    return math.max(_felt.width * 0.03, minRadius);
   }
 
   void _placeBallRandomOnTable(BallInstance b) {
@@ -1950,8 +1952,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             behavior: HitTestBehavior.translucent,
             onPanStart: (_) => setState(() => _dragAxisX = true),
             onPanUpdate: (d) {
-              final nextX =
-                  ((cx + d.delta.dx - felt.left) / felt.width).clamp(0.0, 1.0);
+              final nextX = (b.x + (d.delta.dx / felt.width)).clamp(0.0, 1.0);
               setState(() {
                 b.x = nextX;
                 _dragAxisX = true;
@@ -1976,8 +1977,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             behavior: HitTestBehavior.translucent,
             onPanStart: (_) => setState(() => _dragAxisY = true),
             onPanUpdate: (d) {
-              final nextY =
-                  ((cy + d.delta.dy - felt.top) / felt.height).clamp(0.0, 1.0);
+              final nextY = (b.y + (d.delta.dy / felt.height)).clamp(0.0, 1.0);
               setState(() {
                 b.y = nextY;
                 _dragAxisY = true;
@@ -1996,12 +1996,12 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         Positioned(
           left: cx - 18,
           top: felt.top - 4,
-          child: _axisHandle('X', _dragAxisX),
+          child: _axisHandle('Y', _dragAxisX),
         ),
         Positioned(
           left: felt.right - 32,
           top: cy - 18,
-          child: _axisHandle('Y', _dragAxisY),
+          child: _axisHandle('X', _dragAxisY),
         ),
       ],
     );
