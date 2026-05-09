@@ -134,10 +134,12 @@ class MatchState {
         setWins = [0, 0],
         currentSet = 1,
         fouls = [0, 0],
+        foulTotals = [0, 0],
         setResults = setup.maxSets > 0
             ? List<int?>.filled(setup.maxSets, null)
             : <int?>[],
-        gameOver = false;
+        gameOver = false,
+        resultRecorded = false;
 
   final MatchSetup setup;
   LiveTimer liveTimer;
@@ -149,12 +151,14 @@ class MatchState {
 
   /// 各プレイヤーの連続ファウル（3で相手に1点＋セット終了など）
   final List<int> fouls;
+  final List<int> foulTotals;
   final List<int> setWins;
   int currentSet;
 
   /// 各セットの勝者 0 or 1（長さ = maxSets、未決着は null）
   final List<int?> setResults;
   bool gameOver;
+  bool resultRecorded;
 
   List<String> get names => [setup.p1Name, setup.p2Name];
   List<PlayerRank> get ranks => [setup.p1Rank, setup.p2Rank];

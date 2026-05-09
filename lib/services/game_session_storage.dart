@@ -97,10 +97,12 @@ class GameSessionStorage {
         'scores': m.scores,
         'turnSwitchCountB': m.turnSwitchCountB,
         'fouls': m.fouls,
+        'foulTotals': m.foulTotals,
         'setWins': m.setWins,
         'currentSet': m.currentSet,
         'setResults': m.setResults,
         'gameOver': m.gameOver,
+        'resultRecorded': m.resultRecorded,
         'liveTimer': _liveTimerToJson(m.liveTimer),
       };
 
@@ -117,6 +119,11 @@ class GameSessionStorage {
       m.fouls[0] = fouls[0];
       m.fouls[1] = fouls[1];
     }
+    final foulTotals = (j['foulTotals'] as List?)?.cast<num>().map((e) => e.toInt()).toList();
+    if (foulTotals != null && foulTotals.length == 2) {
+      m.foulTotals[0] = foulTotals[0];
+      m.foulTotals[1] = foulTotals[1];
+    }
     final setWins = (j['setWins'] as List?)?.cast<num>().map((e) => e.toInt()).toList();
     if (setWins != null && setWins.length == 2) {
       m.setWins[0] = setWins[0];
@@ -125,6 +132,7 @@ class GameSessionStorage {
     m.turnSwitchCountB = (j['turnSwitchCountB'] as num?)?.toInt() ?? 0;
     m.currentSet = (j['currentSet'] as num?)?.toInt() ?? 1;
     m.gameOver = j['gameOver'] as bool? ?? false;
+    m.resultRecorded = j['resultRecorded'] as bool? ?? false;
     final setResultsRaw = (j['setResults'] as List?) ?? const [];
     for (var i = 0; i < m.setResults.length && i < setResultsRaw.length; i++) {
       final v = setResultsRaw[i];

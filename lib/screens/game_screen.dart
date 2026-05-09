@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../models/scoreboard_models.dart';
 import '../services/game_session_storage.dart';
+import '../services/match_result_repository.dart';
 import '../theme/apple_theme.dart';
 
 class GameScreenArgs {
@@ -27,6 +29,7 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> {
   late MatchState _match;
+  final _resultRepo = MatchResultRepository();
   Timer? _tick;
   int _startingPlayerB = 0;
   int _activeTurnPlayerB = 0;
@@ -47,6 +50,7 @@ class _GameScreenState extends State<GameScreen> {
       _activeTurnPlayerB = 0;
     }
     _persistSession();
+    unawaited(_resultRepo.ensureLoaded());
   }
 
   @override
@@ -339,6 +343,7 @@ class _GameScreenState extends State<GameScreen> {
         _applyGameOverFreeze();
       }
     });
+    _recordResultIfNeeded();
     _persistSession();
 
     if (!_match.gameOver) {
@@ -359,7 +364,14 @@ class _GameScreenState extends State<GameScreen> {
       _match.scores[1] = 0;
       _match.fouls[0] = 0;
       _match.fouls[1] = 0;
-      _match.currentSet++;
+      _match.gameOver = false;
+      _match.resultRecorded = false;
+      if (_s.maxSets > 0) {
+        _match.currentSet++;
+        if (_match.currentSet > _match.setResults.length) {
+          _match.setResults.add(null);
+        }
+      }
     });
     _persistSession();
   }
@@ -377,8 +389,11 @@ class _GameScreenState extends State<GameScreen> {
       _match.setWins[1] = 0;
       _match.fouls[0] = 0;
       _match.fouls[1] = 0;
+      _match.foulTotals[0] = 0;
+      _match.foulTotals[1] = 0;
       _match.turnSwitchCountB = 0;
       _match.gameOver = false;
+      _match.resultRecorded = false;
       _match.liveTimer = _createInitialTimer();
       _startingPlayerB = 0;
       _activeTurnPlayerB = 0;
@@ -390,6 +405,7 @@ class _GameScreenState extends State<GameScreen> {
     if (_match.gameOver) return;
     setState(() {
       _match.fouls[player]++;
+      _match.foulTotals[player]++;
       if (_match.fouls[player] < 3) return;
 
       final opp = 1 - player;
@@ -414,6 +430,7 @@ class _GameScreenState extends State<GameScreen> {
         _applyGameOverFreeze();
       }
     });
+    _recordResultIfNeeded();
     _persistSession();
 
     if (!_match.gameOver) {
@@ -442,6 +459,37 @@ class _GameScreenState extends State<GameScreen> {
     final m = sec ~/ 60;
     final s = sec % 60;
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  int? _winnerIndex() {
+    if (!_match.gameOver) return null;
+    if (_s.maxSets > 0) {
+      if (_match.setWins[0] == _match.setWins[1]) return null;
+      return _match.setWins[0] > _match.setWins[1] ? 0 : 1;
+    }
+    for (var i = 0; i < 2; i++) {
+      if (_match.scores[i] >= _match.targets[i]) return i;
+    }
+    return null;
+  }
+
+  void _recordResultIfNeeded() {
+    final winner = _winnerIndex();
+    if (winner == null || _match.resultRecorded) return;
+    _match.resultRecorded = true;
+    final myWin = winner == 0;
+    unawaited(
+      _resultRepo.recordMatch(
+        opponentId: _s.p2OpponentKey,
+        myWin: myWin,
+        myFouls: _match.foulTotals[0],
+        opponentFouls: _match.foulTotals[1],
+        timerTab: _s.timerTab,
+        aTotalMinutes: _s.aTotalMinutes,
+        aShotSeconds: _s.aShotSeconds,
+        bShotSeconds: _s.bShotSeconds,
+      ),
+    );
   }
 
   @override
@@ -561,6 +609,7 @@ class _GameScreenState extends State<GameScreen> {
               child: _MatchOverOverlay(
                 setup: _s,
                 match: _match,
+                onNextSet: _nextSet,
               ),
             ),
         ],
@@ -569,26 +618,65 @@ class _GameScreenState extends State<GameScreen> {
   }
 }
 
-class _MatchOverOverlay extends StatelessWidget {
+class _MatchOverOverlay extends StatefulWidget {
   const _MatchOverOverlay({
     required this.setup,
     required this.match,
+    required this.onNextSet,
   });
 
   final MatchSetup setup;
   final MatchState match;
+  final VoidCallback onNextSet;
+
+  @override
+  State<_MatchOverOverlay> createState() => _MatchOverOverlayState();
+}
+
+class _MatchOverOverlayState extends State<_MatchOverOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _confettiCtrl;
+  late final List<_ConfettiPiece> _pieces;
+
+  @override
+  void initState() {
+    super.initState();
+    _confettiCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1900),
+    )..forward();
+    final rnd = math.Random();
+    _pieces = List.generate(
+      58,
+      (i) => _ConfettiPiece(
+        x: rnd.nextDouble(),
+        startY: -0.22 - rnd.nextDouble() * 0.6,
+        endY: 1.12 + rnd.nextDouble() * 0.25,
+        size: 6 + rnd.nextDouble() * 8,
+        sway: 0.01 + rnd.nextDouble() * 0.035,
+        phase: rnd.nextDouble() * math.pi * 2,
+        color: _kConfettiColors[rnd.nextInt(_kConfettiColors.length)],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _confettiCtrl.dispose();
+    super.dispose();
+  }
 
   String _message() {
-    if (setup.maxSets > 0) {
-      if (match.setWins[0] == match.setWins[1]) {
+    if (widget.setup.maxSets > 0) {
+      if (widget.match.setWins[0] == widget.match.setWins[1]) {
         return '試合終了';
       }
-      final w = match.setWins[0] > match.setWins[1] ? 0 : 1;
-      return '${match.names[w]} の勝利！';
+      final w = widget.match.setWins[0] > widget.match.setWins[1] ? 0 : 1;
+      return '${widget.match.names[w]} の勝利！';
     }
     for (var i = 0; i < 2; i++) {
-      if (match.scores[i] >= match.targets[i]) {
-        return '${match.names[i]} の勝利！';
+      if (widget.match.scores[i] >= widget.match.targets[i]) {
+        return '${widget.match.names[i]} の勝利！';
       }
     }
     return '試合終了';
@@ -602,6 +690,21 @@ class _MatchOverOverlay extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _confettiCtrl,
+              builder: (context, _) {
+                return CustomPaint(
+                  painter: _ConfettiPainter(
+                    progress: _confettiCtrl.value,
+                    pieces: _pieces,
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
         Positioned.fill(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -663,6 +766,11 @@ class _MatchOverOverlay extends StatelessWidget {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
+                              const SizedBox(height: 10),
+                              TextButton(
+                                onPressed: widget.onNextSet,
+                                child: const Text('次のセットへ'),
+                              ),
                             ],
                           ),
                         ),
@@ -683,6 +791,70 @@ class _MatchOverOverlay extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+const _kConfettiColors = [
+  AppleColors.appleBlue,
+  AppleColors.systemGreen,
+  AppleColors.systemOrange,
+  Color(0xFFFF4D8D),
+  Color(0xFFA86BFF),
+];
+
+class _ConfettiPiece {
+  const _ConfettiPiece({
+    required this.x,
+    required this.startY,
+    required this.endY,
+    required this.size,
+    required this.sway,
+    required this.phase,
+    required this.color,
+  });
+
+  final double x;
+  final double startY;
+  final double endY;
+  final double size;
+  final double sway;
+  final double phase;
+  final Color color;
+}
+
+class _ConfettiPainter extends CustomPainter {
+  const _ConfettiPainter({
+    required this.progress,
+    required this.pieces,
+  });
+
+  final double progress;
+  final List<_ConfettiPiece> pieces;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final piece in pieces) {
+      final y = (piece.startY + (piece.endY - piece.startY) * progress) * size.height;
+      final sway = math.sin(progress * 12 + piece.phase) * piece.sway * size.width;
+      final x = piece.x * size.width + sway;
+      final paint = Paint()..color = piece.color.withValues(alpha: 0.95);
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(progress * 10 + piece.phase);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(center: Offset.zero, width: piece.size, height: piece.size * 1.5),
+          const Radius.circular(2),
+        ),
+        paint,
+      );
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConfettiPainter oldDelegate) {
+    return oldDelegate.progress != progress;
   }
 }
 
@@ -1309,9 +1481,9 @@ class _SetSection extends StatelessWidget {
                 ),
               ),
               if (showNext)
-                FilledButton(
+                TextButton(
                   onPressed: onNextSet,
-                  child: const Text('次のセットへ →'),
+                  child: const Text('次のセットへ'),
                 ),
             ],
           ),

@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../models/scoreboard_models.dart';
 import '../models/opponent_record.dart';
+import '../models/match_result_record.dart';
+import '../services/match_result_repository.dart';
 import '../services/opponent_repository.dart';
 import '../services/self_profile_repository.dart';
 import '../theme/apple_theme.dart';
@@ -22,6 +24,7 @@ class SetupScreen extends StatefulWidget {
 class _SetupScreenState extends State<SetupScreen> {
   final _oppRepo = OpponentRepository();
   final _selfRepo = SelfProfileRepository();
+  final _resultRepo = MatchResultRepository();
   final _p1Name = TextEditingController(text: 'あなた');
   final _p2Name = TextEditingController(text: '相手');
   final _p2Search = TextEditingController();
@@ -31,6 +34,7 @@ class _SetupScreenState extends State<SetupScreen> {
   /// 検索で選んだ既存相手。未設定なら試合開始時に新規採番
   String? _p2OpponentId;
   List<OpponentRecord> _topCandidates = [];
+  MatchupStatsRecord? _selectedStats;
 
   final _t1 = TextEditingController(text: '5');
   final _t2 = TextEditingController(text: '5');
@@ -50,6 +54,7 @@ class _SetupScreenState extends State<SetupScreen> {
     Future.wait([
       _oppRepo.ensureLoaded(),
       _selfRepo.ensureLoaded(),
+      _resultRepo.ensureLoaded(),
     ]).then((_) {
       if (!mounted) return;
       final self = _selfRepo.load();
@@ -80,6 +85,21 @@ class _SetupScreenState extends State<SetupScreen> {
     );
   }
 
+  Future<void> _registerOpponentProfile() async {
+    await _oppRepo.ensureLoaded();
+    final rec = await _oppRepo.registerNew(
+      displayName: _p2Name.text,
+      rank: _p2Rank,
+    );
+    if (!mounted) return;
+    setState(() {
+      _p2OpponentId = rec.id;
+      _p2Name.text = rec.displayName;
+      _refreshOpponentUi();
+    });
+    await _loadSelectedOpponentStats();
+  }
+
   void _applyOpponent(OpponentRecord o) {
     setState(() {
       _p2OpponentId = o.id;
@@ -88,6 +108,42 @@ class _SetupScreenState extends State<SetupScreen> {
       _p2Search.text = o.displayName;
       _refreshOpponentUi();
     });
+    _loadSelectedOpponentStats();
+  }
+
+  Future<void> _loadSelectedOpponentStats() async {
+    final id = _p2OpponentId;
+    if (id == null) {
+      if (!mounted) return;
+      setState(() => _selectedStats = null);
+      return;
+    }
+    final stats = await _resultRepo.loadStats(id);
+    if (!mounted) return;
+    setState(() => _selectedStats = stats);
+  }
+
+  void _changeTarget(TextEditingController controller, int delta) {
+    final current = int.tryParse(controller.text) ?? 1;
+    final next = (current + delta).clamp(1, 99);
+    controller.text = '$next';
+    _validateTargets();
+  }
+
+  Future<void> _showMatchupStatsSheet() async {
+    final id = _p2OpponentId;
+    if (id == null) return;
+    await _loadSelectedOpponentStats();
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => _MatchupStatsSheet(
+        opponentName: _p2Name.text.trim().isEmpty ? '相手' : _p2Name.text.trim(),
+        stats: _selectedStats,
+      ),
+    );
   }
 
   Future<void> _deleteOpponent(
@@ -122,6 +178,7 @@ class _SetupScreenState extends State<SetupScreen> {
     setState(() {
       if (_p2OpponentId == opponent.id) {
         _p2OpponentId = null;
+        _selectedStats = null;
       }
       _refreshOpponentUi();
     });
@@ -437,26 +494,22 @@ class _SetupScreenState extends State<SetupScreen> {
                         const SizedBox(width: 8),
                         _rankDropdown(
                             _p1Rank, (v) => setState(() => _p1Rank = v!)),
+                        const SizedBox(width: 8),
+                        FilledButton.tonal(
+                          onPressed: _saveMyProfile,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(64, 40),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text('登録'),
+                        ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Padding(
-                    padding: const EdgeInsets.only(left: _kLabeledContentInset),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton(
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 0, vertical: 4),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        onPressed: _saveMyProfile,
-                        child: const Text('自分の情報を登録'),
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 6),
                   Builder(
                     builder: (context) {
                       final self = _selfRepo.load();
@@ -490,18 +543,31 @@ class _SetupScreenState extends State<SetupScreen> {
                             ),
                             onChanged: (_) => setState(() {
                               _p2OpponentId = null;
+                              _selectedStats = null;
                             }),
                           ),
                         ),
                         const SizedBox(width: 8),
                         _rankDropdown(
                             _p2Rank, (v) => setState(() => _p2Rank = v!)),
+                        const SizedBox(width: 8),
+                        FilledButton.tonal(
+                          onPressed: _registerOpponentProfile,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(64, 40),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text('登録'),
+                        ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'よく対戦する相手',
+                    'よく対戦する相手から選ぶ',
                     style: tt.bodyMedium?.copyWith(
                       color: AppleColors.textSecondary,
                       fontWeight: FontWeight.w600,
@@ -635,36 +701,29 @@ class _SetupScreenState extends State<SetupScreen> {
                             alignment: Alignment.centerLeft,
                             child: InputChip(
                               label: Text('ユーザID: $_p2OpponentId'),
-                              onDeleted: () =>
-                                  setState(() => _p2OpponentId = null),
+                              onDeleted: () => setState(() {
+                                _p2OpponentId = null;
+                                _selectedStats = null;
+                              }),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton(
+                              onPressed: _showMatchupStatsSheet,
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 0,
+                                  vertical: 4,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text('対戦成績を表示'),
                             ),
                           ),
                         ],
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton(
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 0, vertical: 4),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            onPressed: () async {
-                              await _oppRepo.ensureLoaded();
-                              final rec = await _oppRepo.registerNew(
-                                displayName: _p2Name.text,
-                                rank: _p2Rank,
-                              );
-                              if (!mounted) return;
-                              setState(() {
-                                _p2OpponentId = rec.id;
-                                _p2Name.text = rec.displayName;
-                                _refreshOpponentUi();
-                              });
-                            },
-                            child: const Text('今の名前・級で新規登録'),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -683,6 +742,8 @@ class _SetupScreenState extends State<SetupScreen> {
                           name: _p1Name.text.isEmpty ? 'あなた' : _p1Name.text,
                           controller: _t1,
                           onChanged: (_) => _validateTargets(),
+                          onDecrement: () => _changeTarget(_t1, -1),
+                          onIncrement: () => _changeTarget(_t1, 1),
                         ),
                       ),
                       Padding(
@@ -700,6 +761,8 @@ class _SetupScreenState extends State<SetupScreen> {
                           name: _p2Name.text.isEmpty ? '相手' : _p2Name.text,
                           controller: _t2,
                           onChanged: (_) => _validateTargets(),
+                          onDecrement: () => _changeTarget(_t2, -1),
+                          onIncrement: () => _changeTarget(_t2, 1),
                         ),
                       ),
                     ],
@@ -1090,11 +1153,15 @@ class _HandePlayer extends StatelessWidget {
     required this.name,
     required this.controller,
     required this.onChanged,
+    required this.onDecrement,
+    required this.onIncrement,
   });
 
   final String name;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
+  final VoidCallback onDecrement;
+  final VoidCallback onIncrement;
 
   static const double _inputFontSize = 36;
 
@@ -1157,6 +1224,22 @@ class _HandePlayer extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _TargetAdjustButton(
+              icon: Icons.remove,
+              onPressed: onDecrement,
+            ),
+            const SizedBox(width: 10),
+            _TargetAdjustButton(
+              icon: Icons.add,
+              filled: true,
+              onPressed: onIncrement,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         Text(
           '先取点',
           textAlign: TextAlign.center,
@@ -1166,6 +1249,332 @@ class _HandePlayer extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _TargetAdjustButton extends StatelessWidget {
+  const _TargetAdjustButton({
+    required this.icon,
+    required this.onPressed,
+    this.filled = false,
+  });
+
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: filled ? AppleColors.appleBlue : AppleColors.lightGray,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onPressed,
+        child: SizedBox(
+          width: 34,
+          height: 34,
+          child: Icon(
+            icon,
+            size: 20,
+            color: filled ? AppleColors.white : AppleColors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MatchupStatsSheet extends StatelessWidget {
+  const _MatchupStatsSheet({
+    required this.opponentName,
+    required this.stats,
+  });
+
+  final String opponentName;
+  final MatchupStatsRecord? stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final mediaBottom = MediaQuery.viewInsetsOf(context).bottom;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 8, 16, mediaBottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '$opponentName との対戦成績',
+              style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 14),
+            if (stats == null)
+              Text(
+                'この相手との対戦記録はまだありません。',
+                style: tt.bodyMedium?.copyWith(
+                  color: AppleColors.glyphGraySecondary,
+                ),
+              )
+            else ...[
+              _RateGraph(
+                wins: stats!.wins,
+                losses: stats!.losses,
+              ),
+              const SizedBox(height: 12),
+              _FoulGraph(
+                myFouls: stats!.myFouls,
+                opponentFouls: stats!.opponentFouls,
+              ),
+              const SizedBox(height: 12),
+              _TimerInfoCard(stats: stats!),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RateGraph extends StatelessWidget {
+  const _RateGraph({
+    required this.wins,
+    required this.losses,
+  });
+
+  final int wins;
+  final int losses;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final total = wins + losses;
+    final winRate = total == 0 ? 0.0 : wins / total;
+    return _BarChartCard(
+      title: '勝率',
+      leftLabel: '勝ち',
+      rightLabel: '負け',
+      leftValue: wins,
+      rightValue: losses,
+      leftRate: winRate,
+      leftColor: AppleColors.systemGreen,
+      rightColor: AppleColors.systemRed,
+      summary: '${(winRate * 100).toStringAsFixed(1)}%',
+      textTheme: tt,
+    );
+  }
+}
+
+class _FoulGraph extends StatelessWidget {
+  const _FoulGraph({
+    required this.myFouls,
+    required this.opponentFouls,
+  });
+
+  final int myFouls;
+  final int opponentFouls;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final total = myFouls + opponentFouls;
+    final myRate = total == 0 ? 0.0 : myFouls / total;
+    return _BarChartCard(
+      title: 'ファール比率',
+      leftLabel: 'あなた',
+      rightLabel: '相手',
+      leftValue: myFouls,
+      rightValue: opponentFouls,
+      leftRate: myRate,
+      leftColor: AppleColors.systemOrange,
+      rightColor: AppleColors.appleBlue,
+      summary: 'あなた ${(myRate * 100).toStringAsFixed(1)}%',
+      textTheme: tt,
+    );
+  }
+}
+
+class _BarChartCard extends StatelessWidget {
+  const _BarChartCard({
+    required this.title,
+    required this.leftLabel,
+    required this.rightLabel,
+    required this.leftValue,
+    required this.rightValue,
+    required this.leftRate,
+    required this.leftColor,
+    required this.rightColor,
+    required this.summary,
+    required this.textTheme,
+  });
+
+  final String title;
+  final String leftLabel;
+  final String rightLabel;
+  final int leftValue;
+  final int rightValue;
+  final double leftRate;
+  final Color leftColor;
+  final Color rightColor;
+  final String summary;
+  final TextTheme textTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppleColors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppleColors.separator),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: AppleColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  summary,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: AppleColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: SizedBox(
+                height: 14,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ColoredBox(color: rightColor.withValues(alpha: 0.6)),
+                    FractionallySizedBox(
+                      widthFactor: leftRate.clamp(0.0, 1.0),
+                      alignment: Alignment.centerLeft,
+                      child: ColoredBox(color: leftColor),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '$leftLabel  $leftValue',
+                  style: textTheme.labelLarge?.copyWith(color: leftColor),
+                ),
+                Text(
+                  '$rightLabel  $rightValue',
+                  style: textTheme.labelLarge?.copyWith(color: rightColor),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TimerInfoCard extends StatelessWidget {
+  const _TimerInfoCard({required this.stats});
+
+  final MatchupStatsRecord stats;
+
+  String _modeLabel(String modeName) {
+    switch (modeName) {
+      case 'totalThenShot':
+        return 'A 持ち時間';
+      case 'shotClockOnly':
+        return 'B 1ショット';
+      case 'unlimited':
+        return 'C 制限なし';
+      case 'countNine':
+        return 'D カウントナイン';
+      default:
+        return modeName;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final entries = stats.timerModeCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    String latest = 'なし';
+    switch (stats.lastTimerTab) {
+      case TimerTabKind.totalThenShot:
+        latest = 'A 持ち時間 ${stats.lastATotalMinutes ?? 0}分 / 1ショット ${stats.lastAShotSeconds ?? 0}秒';
+        break;
+      case TimerTabKind.shotClockOnly:
+        latest = 'B 1ショット ${stats.lastBShotSeconds ?? 0}秒';
+        break;
+      case TimerTabKind.unlimited:
+        latest = 'C 制限なし';
+        break;
+      case TimerTabKind.countNine:
+        latest = 'D カウントナイン';
+        break;
+      case null:
+        break;
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppleColors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppleColors.separator),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'タイマー情報',
+              style: tt.bodyMedium?.copyWith(
+                color: AppleColors.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '最近の設定: $latest',
+              style: tt.labelLarge?.copyWith(color: AppleColors.textSecondary),
+            ),
+            if (entries.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              for (final e in entries)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${_modeLabel(e.key)}  ${e.value}回',
+                    style: tt.labelLarge?.copyWith(
+                      color: AppleColors.glyphGraySecondary,
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

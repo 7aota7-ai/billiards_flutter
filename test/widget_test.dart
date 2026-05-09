@@ -9,7 +9,12 @@ void main() {
   });
 
   testWidgets('設定画面が表示される', (WidgetTester tester) async {
-    await tester.pumpWidget(const BilliardsApp());
+    await tester.pumpWidget(
+      const BilliardsApp(
+        initialRoute: '/setup',
+        restored: null,
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('スコアボード設定'), findsOneWidget);
