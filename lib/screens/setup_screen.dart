@@ -58,9 +58,6 @@ class _SetupScreenState extends State<SetupScreen> {
   final _aShot = TextEditingController(text: '25');
   final _bShot = TextEditingController(text: '45');
 
-  bool _timerSettingsExpandedA = false;
-  bool _timerSettingsExpandedB = false;
-
   int _maxSets = 0;
 
   bool _targetsValid = true;
@@ -936,7 +933,7 @@ class _SetupScreenState extends State<SetupScreen> {
                         final cardHeight = (108 + w * 0.08).clamp(160.0, 220.0);
                         const narrowBreak = 600.0;
                         final narrow = w < narrowBreak;
-                        const timerBandH = 132.0;
+                        const timerBandH = 118.0;
 
                         Widget tileA() => SizedBox(
                               width: narrow ? double.infinity : null,
@@ -953,43 +950,14 @@ class _SetupScreenState extends State<SetupScreen> {
                                           () => _tab = TimerTabKind.totalThenShot),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  TextButton.icon(
-                                    style: TextButton.styleFrom(
-                                      alignment: Alignment.centerLeft,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 4, vertical: 6),
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                    onPressed: () => setState(
-                                      () => _timerSettingsExpandedA =
-                                          !_timerSettingsExpandedA,
-                                    ),
-                                    icon: Icon(
-                                      _timerSettingsExpandedA
-                                          ? Icons.expand_less
-                                          : Icons.expand_more,
-                                      size: 22,
-                                      color: AppleColors.appleBlue,
-                                    ),
-                                    label: Text(
-                                      _timerSettingsExpandedA
-                                          ? '時間の設定を閉じる'
-                                          : '時間の設定を表示',
-                                      style: tt.labelLarge?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                        color: AppleColors.appleBlue,
-                                      ),
-                                    ),
-                                  ),
-                                  if (_timerSettingsExpandedA) ...[
-                                    const SizedBox(height: 8),
+                                  if (_tab == TimerTabKind.totalThenShot) ...[
+                                    const SizedBox(height: 6),
                                     _TimerBottomBand(
                                       height: timerBandH,
                                       title: '時間の設定',
                                       child: Row(
                                         crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                            CrossAxisAlignment.center,
                                         children: [
                                           Expanded(
                                             child: _TimerNumericField(
@@ -1028,43 +996,14 @@ class _SetupScreenState extends State<SetupScreen> {
                                           () => _tab = TimerTabKind.shotClockOnly),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  TextButton.icon(
-                                    style: TextButton.styleFrom(
-                                      alignment: Alignment.centerLeft,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 4, vertical: 6),
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                    onPressed: () => setState(
-                                      () => _timerSettingsExpandedB =
-                                          !_timerSettingsExpandedB,
-                                    ),
-                                    icon: Icon(
-                                      _timerSettingsExpandedB
-                                          ? Icons.expand_less
-                                          : Icons.expand_more,
-                                      size: 22,
-                                      color: AppleColors.appleBlue,
-                                    ),
-                                    label: Text(
-                                      _timerSettingsExpandedB
-                                          ? '時間の設定を閉じる'
-                                          : '時間の設定を表示',
-                                      style: tt.labelLarge?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                        color: AppleColors.appleBlue,
-                                      ),
-                                    ),
-                                  ),
-                                  if (_timerSettingsExpandedB) ...[
-                                    const SizedBox(height: 8),
+                                  if (_tab == TimerTabKind.shotClockOnly) ...[
+                                    const SizedBox(height: 6),
                                     _TimerBottomBand(
                                       height: timerBandH,
                                       title: '時間の設定',
                                       child: Row(
                                         crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                            CrossAxisAlignment.center,
                                         children: [
                                           Expanded(
                                             child: _TimerNumericField(
@@ -1531,21 +1470,22 @@ class _TargetAdjustButton extends StatelessWidget {
   }
 }
 
-/// タイマー A/B の「時間の設定」展開時の入力枠
+/// タイマー A/B の時間入力枠（[title] が null のときは見出し行なし）
 class _TimerBottomBand extends StatelessWidget {
   const _TimerBottomBand({
     required this.height,
-    required this.title,
+    this.title,
     required this.child,
   });
 
   final double height;
-  final String title;
+  final String? title;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final showTitle = title != null && title!.isNotEmpty;
     return SizedBox(
       height: height,
       child: DecoratedBox(
@@ -1555,20 +1495,23 @@ class _TimerBottomBand extends StatelessWidget {
           border: Border.all(color: AppleColors.separator.withValues(alpha: 0.6)),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                title,
-                style: tt.labelLarge?.copyWith(
-                  color: AppleColors.textSecondary,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
+              if (showTitle) ...[
+                Text(
+                  title!,
+                  style: tt.labelLarge?.copyWith(
+                    color: AppleColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Expanded(child: child),
+                const SizedBox(height: 6),
+              ],
+              child,
             ],
           ),
         ),
@@ -1594,7 +1537,7 @@ class _TimerNumericField extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     return Column(
-      mainAxisAlignment: MainAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
