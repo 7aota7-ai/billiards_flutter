@@ -1356,21 +1356,21 @@ class _PlayerCard extends StatelessWidget {
             }),
           ),
           const SizedBox(height: 2),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 4,
+            runSpacing: 2,
             children: [
               TextButton(
                 onPressed: match.gameOver ? null : () => onFoul(playerIndex),
                 style: TextButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  minimumSize: const Size(0, 32),
                 ),
                 child: Text(
                   'ファウル',
-                  style: tt.titleMedium?.copyWith(
+                  style: tt.bodyLarge?.copyWith(
                     fontWeight: FontWeight.w400,
                     color: match.gameOver
                         ? AppleColors.glyphGraySecondary
@@ -1392,14 +1392,12 @@ class _PlayerCard extends StatelessWidget {
                     ? null
                     : () => onFoulReset(playerIndex),
                 style: TextButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  minimumSize: const Size(0, 32),
                 ),
                 child: Text(
                   'リセット',
-                  style: tt.titleMedium?.copyWith(
+                  style: tt.bodyLarge?.copyWith(
                     fontWeight: FontWeight.w400,
                     color: match.gameOver || fc == 0
                         ? AppleColors.glyphGraySecondary

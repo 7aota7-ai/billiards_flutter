@@ -705,6 +705,24 @@ class _SetupScreenState extends State<SetupScreen> {
                       ],
                     ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.only(
+                        left: _kLabeledContentInset, top: 4, bottom: 4),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 0, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed:
+                            _p2OpponentId == null ? null : _showMatchupStatsSheet,
+                        child: const Text('対戦成績を表示'),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     'よく対戦する相手から選ぶ',
@@ -835,62 +853,6 @@ class _SetupScreenState extends State<SetupScreen> {
                             ),
                           ],
                         ),
-                        if (_p2OpponentId != null) ...[
-                          const SizedBox(height: 6),
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: AppleColors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppleColors.separator),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          _p2Name.text.trim().isEmpty
-                                              ? '相手'
-                                              : _p2Name.text.trim(),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: tt.bodyMedium?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          'ユーザID: $_p2OpponentId',
-                                          style: tt.labelLarge?.copyWith(
-                                            color: AppleColors
-                                                .glyphGraySecondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  TextButton(
-                                    onPressed: _showMatchupStatsSheet,
-                                    child: const Text('対戦成績を表示'),
-                                  ),
-                                  IconButton(
-                                    tooltip: '選択解除',
-                                    icon: const Icon(Icons.close),
-                                    onPressed: () => setState(() {
-                                      _p2OpponentId = null;
-                                      _selectedStats = null;
-                                    }),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),
@@ -961,49 +923,138 @@ class _SetupScreenState extends State<SetupScreen> {
                         final cardHeight = (108 + w * 0.08).clamp(160.0, 220.0);
                         const narrowBreak = 600.0;
                         final narrow = w < narrowBreak;
+                        const timerBandH = 132.0;
 
                         Widget tileA() => SizedBox(
-                              height: cardHeight,
                               width: narrow ? double.infinity : null,
-                              child: _TimerModeTile(
-                                title: 'A  持ち時間',
-                                subtitle: '各自の持ち時間のあと、1ショットタイマーに切り替わります',
-                                selected: _tab == TimerTabKind.totalThenShot,
-                                onTap: () => setState(
-                                    () => _tab = TimerTabKind.totalThenShot),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SizedBox(
+                                    height: cardHeight,
+                                    child: _TimerModeTile(
+                                      title: 'A  持ち時間',
+                                      subtitle: '各自の持ち時間のあと、1ショットタイマーに切り替わります',
+                                      selected: _tab == TimerTabKind.totalThenShot,
+                                      onTap: () => setState(
+                                          () => _tab = TimerTabKind.totalThenShot),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _TimerBottomBand(
+                                    height: timerBandH,
+                                    title: '時間の設定',
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: _TimerNumericField(
+                                            label: '各自',
+                                            controller: _aTotal,
+                                            suffix: '分',
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: _TimerNumericField(
+                                            label: '時間切れ後',
+                                            controller: _aShot,
+                                            suffix: '秒',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
                         Widget tileB() => SizedBox(
-                              height: cardHeight,
                               width: narrow ? double.infinity : null,
-                              child: _TimerModeTile(
-                                title: 'B  1ショットクロック',
-                                subtitle: '１ショットごとにカウント',
-                                selected: _tab == TimerTabKind.shotClockOnly,
-                                onTap: () => setState(
-                                    () => _tab = TimerTabKind.shotClockOnly),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SizedBox(
+                                    height: cardHeight,
+                                    child: _TimerModeTile(
+                                      title: 'B  1ショットクロック',
+                                      subtitle: '１ショットごとにカウント',
+                                      selected: _tab == TimerTabKind.shotClockOnly,
+                                      onTap: () => setState(
+                                          () => _tab = TimerTabKind.shotClockOnly),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _TimerBottomBand(
+                                    height: timerBandH,
+                                    title: '時間の設定',
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: _TimerNumericField(
+                                            label: '制限時間',
+                                            controller: _bShot,
+                                            suffix: '秒',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
                         Widget tileC() => SizedBox(
-                              height: cardHeight,
                               width: narrow ? double.infinity : null,
-                              child: _TimerModeTile(
-                                title: 'C  制限なし',
-                                subtitle: 'タイマーなしで進行します',
-                                selected: _tab == TimerTabKind.unlimited,
-                                onTap: () => setState(
-                                    () => _tab = TimerTabKind.unlimited),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SizedBox(
+                                    height: cardHeight,
+                                    child: _TimerModeTile(
+                                      title: 'C  制限なし',
+                                      subtitle: 'タイマーなしで進行します',
+                                      selected: _tab == TimerTabKind.unlimited,
+                                      onTap: () => setState(
+                                          () => _tab = TimerTabKind.unlimited),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const _TimerBottomBand(
+                                    height: timerBandH,
+                                    title: '時間の設定',
+                                    child: _TimerBottomBandPlaceholder(
+                                      text: '入力なし',
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
                         Widget tileD() => SizedBox(
-                              height: cardHeight,
                               width: narrow ? double.infinity : null,
-                              child: _TimerModeTile(
-                                title: 'D  制限なし（カウントナイン）',
-                                subtitle: 'カウントナイン専用スコアボード',
-                                selected: _tab == TimerTabKind.countNine,
-                                onTap: () => setState(
-                                    () => _tab = TimerTabKind.countNine),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SizedBox(
+                                    height: cardHeight,
+                                    child: _TimerModeTile(
+                                      title: 'D  制限なし（カウントナイン）',
+                                      subtitle: 'カウントナイン専用スコアボード',
+                                      selected: _tab == TimerTabKind.countNine,
+                                      onTap: () => setState(
+                                          () => _tab = TimerTabKind.countNine),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const _TimerBottomBand(
+                                    height: timerBandH,
+                                    title: '時間の設定',
+                                    child: _TimerBottomBandPlaceholder(
+                                      text: '入力なし',
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
 
@@ -1055,60 +1106,6 @@ class _SetupScreenState extends State<SetupScreen> {
                       },
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  if (_tab == TimerTabKind.totalThenShot) ...[
-                    // IntrinsicHeight+stretch は初回レイアウトで intrinsic と実高さが 1px ずれて overflow しやすい
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _TimerOptColumn(
-                            label: '持ち時間（各自）',
-                            field: _aTotal,
-                            suffix: '分',
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _TimerOptColumn(
-                            label: '時間切れ後の1ショット',
-                            field: _aShot,
-                            suffix: '秒',
-                          ),
-                        ),
-                      ],
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '持ち時間が切れたら1ショットタイマーに切り替わります。',
-                        style: tt.labelLarge?.copyWith(
-                          color: AppleColors.glyphGraySecondary,
-                          height: 1.35,
-                        ),
-                      ),
-                    ),
-                  ],
-                  if (_tab == TimerTabKind.shotClockOnly) ...[
-                    _OptRow(
-                      label: '1ショットの制限時間',
-                      field: _bShot,
-                      suffix: '秒',
-                      min: 5,
-                      max: 300,
-                      compact: true,
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        'スタート後にカウントダウン。一時停止・リセットは相手が操作します。',
-                        style: tt.labelLarge?.copyWith(
-                          color: AppleColors.glyphGraySecondary,
-                          height: 1.35,
-                        ),
-                      ),
-                    ),
-                  ],
                   if (_tab == TimerTabKind.unlimited)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -1133,30 +1130,51 @@ class _SetupScreenState extends State<SetupScreen> {
             _CardBlock(
               title: 'マッチ設定',
               badge: '任意',
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '最大セット数',
-                    style: tt.bodyMedium
-                        ?.copyWith(color: AppleColors.textSecondary),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      value: _maxSets,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 0, child: Text('設定しない（スコアのみ）')),
-                        DropdownMenuItem(value: 3, child: Text('3セット（先取2）')),
-                        DropdownMenuItem(value: 5, child: Text('5セット（先取3）')),
-                        DropdownMenuItem(value: 7, child: Text('7セット（先取4）')),
-                        DropdownMenuItem(value: 9, child: Text('9セット（先取5）')),
-                      ],
-                      onChanged: (v) => setState(() => _maxSets = v ?? 0),
+                    '連続でセットマッチを行う際に利用できる機能です',
+                    style: tt.labelLarge?.copyWith(
+                      color: AppleColors.glyphGraySecondary,
+                      height: 1.35,
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Text(
+                        '最大セット数',
+                        style:
+                            tt.bodyMedium?.copyWith(color: AppleColors.textSecondary),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          initialValue: _maxSets,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                          ),
+                          selectedItemBuilder: (context) => const [
+                            Text('設定しない（スコアのみ）', overflow: TextOverflow.ellipsis),
+                            Text('3セット（先取2）', overflow: TextOverflow.ellipsis),
+                            Text('5セット（先取3）', overflow: TextOverflow.ellipsis),
+                            Text('7セット（先取4）', overflow: TextOverflow.ellipsis),
+                            Text('9セット（先取5）', overflow: TextOverflow.ellipsis),
+                          ],
+                          items: const [
+                            DropdownMenuItem(value: 0, child: Text('設定しない（スコアのみ）')),
+                            DropdownMenuItem(value: 3, child: Text('3セット（先取2）')),
+                            DropdownMenuItem(value: 5, child: Text('5セット（先取3）')),
+                            DropdownMenuItem(value: 7, child: Text('7セット（先取4）')),
+                            DropdownMenuItem(value: 9, child: Text('9セット（先取5）')),
+                          ],
+                          onChanged: (v) => setState(() => _maxSets = v ?? 0),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1168,12 +1186,15 @@ class _SetupScreenState extends State<SetupScreen> {
               child: FilledButton(
                 onPressed: _targetsValid ? () => _start() : null,
                 style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text('試合開始'),
+                child: Text(
+                  '試合開始',
+                  style: tt.titleMedium?.copyWith(height: 1.2),
+                ),
               ),
             ),
             const SizedBox(height: 28),
@@ -1356,7 +1377,7 @@ class _HandePlayer extends StatelessWidget {
               keyboardType: TextInputType.number,
               textAlign: TextAlign.center,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: _inputFontSize,
                 fontWeight: FontWeight.w600,
                 height: 1.1,
@@ -1453,87 +1474,128 @@ class _TargetAdjustButton extends StatelessWidget {
   }
 }
 
-/// モードA: 持ち時間・ショット時間（横並び・フォント拡大）
-class _TimerOptColumn extends StatelessWidget {
-  const _TimerOptColumn({
-    required this.label,
-    required this.field,
-    required this.suffix,
+/// タイマー各列の下段: A/B と同じ高さ・枠線で統一する
+class _TimerBottomBand extends StatelessWidget {
+  const _TimerBottomBand({
+    required this.height,
+    required this.title,
+    required this.child,
   });
 
-  final String label;
-  final TextEditingController field;
-  final String suffix;
-
-  static const double _scale = 1.2;
+  final double height;
+  final String title;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final labelFs = (tt.labelLarge?.fontSize ?? 14) * _scale;
-    final fieldFs = (tt.bodyLarge?.fontSize ?? 17) * _scale;
-    final suffixStyle = tt.labelLarge?.copyWith(
-      fontSize: labelFs * 0.95,
-      color: AppleColors.glyphGraySecondary,
-      fontWeight: FontWeight.w500,
-    );
-
-    final borderRadius = BorderRadius.circular(8);
-    final outlineBorder = OutlineInputBorder(
-      borderRadius: borderRadius,
-      borderSide: const BorderSide(color: AppleColors.separator),
-    );
-    final outlineFocused = OutlineInputBorder(
-      borderRadius: borderRadius,
-      borderSide: const BorderSide(color: AppleColors.appleBlue, width: 2),
-    );
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: tt.labelLarge?.copyWith(
-            fontSize: labelFs,
-            color: AppleColors.textSecondary,
-            fontWeight: FontWeight.w500,
-            height: 1.25,
+    return SizedBox(
+      height: height,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppleColors.lightGray.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppleColors.separator.withValues(alpha: 0.6)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                title,
+                style: tt.labelLarge?.copyWith(
+                  color: AppleColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(child: child),
+            ],
           ),
         ),
-        const SizedBox(height: 8),
+      ),
+    );
+  }
+}
+
+class _TimerBottomBandPlaceholder extends StatelessWidget {
+  const _TimerBottomBandPlaceholder({
+    required this.text,
+  });
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Align(
+      alignment: Alignment.center,
+      child: Text(
+        text,
+        style: tt.labelLarge?.copyWith(
+          color: AppleColors.glyphGraySecondary,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+}
+
+class _TimerNumericField extends StatelessWidget {
+  const _TimerNumericField({
+    required this.label,
+    required this.controller,
+    required this.suffix,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final String suffix;
+
+  static const OutlineInputBorder _border = OutlineInputBorder();
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            SizedBox(
-              width: 68,
+            Expanded(
               child: TextField(
-                controller: field,
+                controller: controller,
                 keyboardType: TextInputType.number,
                 textAlign: TextAlign.center,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                style: TextStyle(
-                  fontSize: fieldFs,
-                  fontWeight: FontWeight.w600,
-                  color: AppleColors.textPrimary,
-                ),
                 decoration: InputDecoration(
                   isDense: true,
+                  labelText: label,
                   filled: true,
                   fillColor: AppleColors.white,
-                  contentPadding: EdgeInsets.symmetric(
-                    vertical: (10 * _scale).floorToDouble(),
-                    horizontal: 8,
+                  border: _border,
+                  enabledBorder: _border,
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: AppleColors.appleBlue, width: 2),
                   ),
-                  border: outlineBorder,
-                  enabledBorder: outlineBorder,
-                  focusedBorder: outlineFocused,
-                  disabledBorder: outlineBorder,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                 ),
               ),
             ),
             const SizedBox(width: 6),
-            Text(suffix, style: suffixStyle),
+            Text(
+              suffix,
+              style: tt.labelLarge?.copyWith(
+                color: AppleColors.glyphGraySecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ],
@@ -1633,67 +1695,3 @@ class _TimerModeTile extends StatelessWidget {
   }
 }
 
-class _OptRow extends StatelessWidget {
-  const _OptRow({
-    required this.label,
-    required this.field,
-    required this.suffix,
-    required this.min,
-    required this.max,
-    this.compact = false,
-  });
-
-  final String label;
-  final TextEditingController field;
-  final String suffix;
-  final int min;
-  final int max;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final labelStyle = Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: AppleColors.textSecondary,
-          fontWeight: FontWeight.w500,
-        );
-    return Padding(
-      padding: EdgeInsets.only(bottom: compact ? 4 : 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          if (compact)
-            SizedBox(
-              width: 148,
-              child: Text(label, style: labelStyle),
-            )
-          else
-            Expanded(
-              child: Text(label, style: labelStyle),
-            ),
-          if (compact) const SizedBox(width: 10),
-          SizedBox(
-            width: 56,
-            child: TextField(
-              controller: field,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            suffix,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppleColors.glyphGraySecondary,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}

@@ -1082,6 +1082,11 @@ class SavedBallLayout {
 
 // --- Screens ---
 
+enum _PhoneAxisSelection {
+  x,
+  y,
+}
+
 class BallLayoutEditorScreen extends StatefulWidget {
   const BallLayoutEditorScreen({
     super.key,
@@ -1124,6 +1129,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   int? _spAxisBallId;
   bool _dragAxisX = false;
   bool _dragAxisY = false;
+  _PhoneAxisSelection? _selectedPhoneAxis;
 
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
@@ -1205,6 +1211,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _lastTap.remove(b.def.id);
       if (_spAxisBallId == b.def.id) {
         _spAxisBallId = null;
+        _selectedPhoneAxis = null;
       }
       setState(() => _status = 'トレイに戻しました');
       return;
@@ -1237,6 +1244,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     _dragBallId = b.def.id;
     if (isPhone) {
       _spAxisBallId = b.def.id;
+      _selectedPhoneAxis = null;
+      _dragAxisX = false;
+      _dragAxisY = false;
     }
   }
 
@@ -1909,7 +1919,12 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                     ((p.dx - (_felt.left + axisBall.x * _felt.width)).abs() <= 18 ||
                         (p.dy - (_felt.top + axisBall.y * _felt.height)).abs() <= 18);
                 if (!hitBall && !hitAxis) {
-                  setState(() => _spAxisBallId = null);
+                  setState(() {
+                    _spAxisBallId = null;
+                    _selectedPhoneAxis = null;
+                    _dragAxisX = false;
+                    _dragAxisY = false;
+                  });
                 }
               }
               if (!_trajMode || !_trajEditMode) return;
@@ -1977,16 +1992,24 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           height: felt.height,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) => setState(() => _dragAxisX = true),
+            onPanStart: (_) {
+              if (_selectedPhoneAxis != _PhoneAxisSelection.x) return;
+              setState(() => _dragAxisX = true);
+            },
             onPanUpdate: (d) {
+              if (_selectedPhoneAxis != _PhoneAxisSelection.x) return;
               final nextX = (b.x + (d.delta.dx / felt.width)).clamp(0.0, 1.0);
               setState(() {
                 b.x = nextX;
                 _dragAxisX = true;
               });
             },
-            onPanEnd: (_) => setState(() => _dragAxisX = false),
-            onPanCancel: () => setState(() => _dragAxisX = false),
+            onPanEnd: (_) {
+              if (_dragAxisX) setState(() => _dragAxisX = false);
+            },
+            onPanCancel: () {
+              if (_dragAxisX) setState(() => _dragAxisX = false);
+            },
             child: CustomPaint(
               painter: _GuideLinePainter(
                 isVertical: true,
@@ -2002,16 +2025,24 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           height: 28,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) => setState(() => _dragAxisY = true),
+            onPanStart: (_) {
+              if (_selectedPhoneAxis != _PhoneAxisSelection.y) return;
+              setState(() => _dragAxisY = true);
+            },
             onPanUpdate: (d) {
+              if (_selectedPhoneAxis != _PhoneAxisSelection.y) return;
               final nextY = (b.y + (d.delta.dy / felt.height)).clamp(0.0, 1.0);
               setState(() {
                 b.y = nextY;
                 _dragAxisY = true;
               });
             },
-            onPanEnd: (_) => setState(() => _dragAxisY = false),
-            onPanCancel: () => setState(() => _dragAxisY = false),
+            onPanEnd: (_) {
+              if (_dragAxisY) setState(() => _dragAxisY = false);
+            },
+            onPanCancel: () {
+              if (_dragAxisY) setState(() => _dragAxisY = false);
+            },
             child: CustomPaint(
               painter: _GuideLinePainter(
                 isVertical: false,
@@ -2023,33 +2054,69 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         Positioned(
           left: cx - 18,
           top: felt.top - 4,
-          child: _axisHandle('Y', _dragAxisX),
+          child: _axisHandle(
+            axis: 'X',
+            selected: _selectedPhoneAxis == _PhoneAxisSelection.x,
+            dragging: _dragAxisX,
+            onTap: () {
+              setState(() {
+                _selectedPhoneAxis = _PhoneAxisSelection.x;
+                _dragAxisY = false;
+              });
+            },
+          ),
         ),
         Positioned(
           left: felt.right - 32,
           top: cy - 18,
-          child: _axisHandle('X', _dragAxisY),
+          child: _axisHandle(
+            axis: 'Y',
+            selected: _selectedPhoneAxis == _PhoneAxisSelection.y,
+            dragging: _dragAxisY,
+            onTap: () {
+              setState(() {
+                _selectedPhoneAxis = _PhoneAxisSelection.y;
+                _dragAxisX = false;
+              });
+            },
+          ),
         ),
       ],
     );
   }
 
-  Widget _axisHandle(String axis, bool active) {
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        color: active ? AppleColors.appleBlue : AppleColors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppleColors.appleBlue, width: 1.5),
-        boxShadow: AppleColors.cardShadow,
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        axis,
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
-          color: active ? AppleColors.white : AppleColors.appleBlue,
+  Widget _axisHandle({
+    required String axis,
+    required bool selected,
+    required bool dragging,
+    required VoidCallback onTap,
+  }) {
+    final fill = selected
+        ? const Color(0xFFCC7A00)
+        : dragging
+            ? AppleColors.appleBlue
+            : AppleColors.white;
+    final fg = (selected || dragging) ? AppleColors.white : AppleColors.appleBlue;
+    final border = selected ? const Color(0xFF9A5D00) : AppleColors.appleBlue;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: border, width: 1.5),
+          boxShadow: AppleColors.cardShadow,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          axis,
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: fg,
+          ),
         ),
       ),
     );
