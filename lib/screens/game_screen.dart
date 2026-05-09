@@ -9,6 +9,7 @@ import '../services/elo_rating_repository.dart';
 import '../services/game_session_storage.dart';
 import '../services/match_result_repository.dart';
 import '../theme/apple_theme.dart';
+import '../widgets/elo_info_link.dart';
 import '../widgets/matchup_stats_sheet.dart';
 
 class GameScreenArgs {
@@ -609,11 +610,19 @@ class _GameScreenState extends State<GameScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   child: Row(
                     children: [
-                      Text(
-                        'Elo(通常)',
+                      EloInfoLink(
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
+                        suffix: Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Text(
+                            '(通常)',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(

@@ -10,6 +10,7 @@ import '../services/match_result_repository.dart';
 import '../services/opponent_repository.dart';
 import '../services/self_profile_repository.dart';
 import '../theme/apple_theme.dart';
+import '../widgets/elo_info_link.dart';
 import '../widgets/matchup_stats_sheet.dart';
 import 'count_nine_screen.dart';
 import 'game_screen.dart';
@@ -199,11 +200,30 @@ class _SetupScreenState extends State<SetupScreen> {
                 if (self != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: Text(
-                      'あなたのElo  通常:${scoreElo[self.id]?.rating ?? 1500}  カウントナイン:${c9Elo[self.id]?.rating ?? 1500}',
-                      style: tt.labelLarge?.copyWith(
-                        color: AppleColors.textSecondary,
-                      ),
+                    child: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 0,
+                      runSpacing: 4,
+                      children: [
+                        Text(
+                          'あなたの',
+                          style: tt.labelLarge?.copyWith(
+                            color: AppleColors.textSecondary,
+                          ),
+                        ),
+                        EloInfoLink(
+                          style: tt.labelLarge?.copyWith(
+                            color: AppleColors.textSecondary,
+                          ),
+                          iconSize: 16,
+                        ),
+                        Text(
+                          '  通常:${scoreElo[self.id]?.rating ?? 1500}  カウントナイン:${c9Elo[self.id]?.rating ?? 1500}',
+                          style: tt.labelLarge?.copyWith(
+                            color: AppleColors.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 const Divider(height: 1),
@@ -227,8 +247,29 @@ class _SetupScreenState extends State<SetupScreen> {
                             final name = nameById[id] ?? id;
                             return ListTile(
                               title: Text(name),
-                              subtitle: Text(
-                                '${s.wins}勝${s.losses}敗  /  Elo 通常:${scoreElo[id]?.rating ?? 1500}  C9:${c9Elo[id]?.rating ?? 1500}',
+                              subtitle: Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 4,
+                                children: [
+                                  Text(
+                                    '${s.wins}勝${s.losses}敗  /  ',
+                                    style: tt.bodyMedium?.copyWith(
+                                      color: AppleColors.textSecondary,
+                                    ),
+                                  ),
+                                  EloInfoLink(
+                                    style: tt.bodyMedium?.copyWith(
+                                      color: AppleColors.textSecondary,
+                                    ),
+                                    iconSize: 15,
+                                  ),
+                                  Text(
+                                    ' 通常:${scoreElo[id]?.rating ?? 1500}  C9:${c9Elo[id]?.rating ?? 1500}',
+                                    style: tt.bodyMedium?.copyWith(
+                                      color: AppleColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
                               ),
                               trailing: Text(
                                 _formatYmd(DateTime.fromMillisecondsSinceEpoch(
