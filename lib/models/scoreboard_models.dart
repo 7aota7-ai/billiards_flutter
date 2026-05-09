@@ -138,6 +138,9 @@ class MatchState {
         setResults = setup.maxSets > 0
             ? List<int?>.filled(setup.maxSets, null)
             : <int?>[],
+        setUsedSeconds = setup.maxSets > 0
+            ? List<List<int>?>.filled(setup.maxSets, null)
+            : <List<int>?>[],
         gameOver = false,
         resultRecorded = false;
 
@@ -157,6 +160,7 @@ class MatchState {
 
   /// 各セットの勝者 0 or 1（長さ = maxSets、未決着は null）
   final List<int?> setResults;
+  final List<List<int>?> setUsedSeconds;
   bool gameOver;
   bool resultRecorded;
 

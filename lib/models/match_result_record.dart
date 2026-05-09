@@ -16,6 +16,7 @@ class MatchupStatsRecord {
     this.lastATotalMinutes,
     this.lastAShotSeconds,
     this.lastBShotSeconds,
+    this.matchHistory = const [],
   });
 
   final String opponentId;
@@ -29,6 +30,7 @@ class MatchupStatsRecord {
   final int? lastATotalMinutes;
   final int? lastAShotSeconds;
   final int? lastBShotSeconds;
+  final List<MatchHistoryEntry> matchHistory;
 
   int get losses => matches > wins ? matches - wins : 0;
 
@@ -52,6 +54,7 @@ class MatchupStatsRecord {
         'lastATotalMinutes': lastATotalMinutes,
         'lastAShotSeconds': lastAShotSeconds,
         'lastBShotSeconds': lastBShotSeconds,
+        'matchHistory': matchHistory.map((e) => e.toJson()).toList(),
       };
 
   static MatchupStatsRecord fromJson(Map<String, dynamic> j) {
@@ -68,6 +71,9 @@ class MatchupStatsRecord {
       lastATotalMinutes: (j['lastATotalMinutes'] as num?)?.toInt(),
       lastAShotSeconds: (j['lastAShotSeconds'] as num?)?.toInt(),
       lastBShotSeconds: (j['lastBShotSeconds'] as num?)?.toInt(),
+      matchHistory: ((j['matchHistory'] as List?) ?? const [])
+          .map((e) => MatchHistoryEntry.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(),
     );
   }
 
@@ -96,5 +102,38 @@ class MatchupStatsRecord {
       if (v.name == name) return v;
     }
     return null;
+  }
+}
+
+class MatchHistoryEntry {
+  const MatchHistoryEntry({
+    required this.atMs,
+    required this.myWin,
+    this.setUsedSeconds = const [],
+  });
+
+  final int atMs;
+  final bool myWin;
+  final List<List<int>> setUsedSeconds;
+
+  Map<String, dynamic> toJson() => {
+        'atMs': atMs,
+        'myWin': myWin,
+        'setUsedSeconds': setUsedSeconds,
+      };
+
+  static MatchHistoryEntry fromJson(Map<String, dynamic> j) {
+    return MatchHistoryEntry(
+      atMs: (j['atMs'] as num?)?.toInt() ?? 0,
+      myWin: j['myWin'] as bool? ?? false,
+      setUsedSeconds: ((j['setUsedSeconds'] as List?) ?? const [])
+          .whereType<List>()
+          .where((e) => e.length >= 2)
+          .map((e) => <int>[
+                (e[0] as num).toInt(),
+                (e[1] as num).toInt(),
+              ])
+          .toList(),
+    );
   }
 }

@@ -56,6 +56,8 @@ const List<String> kAppleFontFallback = [
 ];
 
 TextTheme _buildAppleTextTheme(ColorScheme cs) {
+  // 全体の可読性向上: 最小フォント 16px 基準
+  const minFont = 16.0;
   const bodyHeight = 1.47;
   const bodySpacing = -0.357;
 
@@ -99,7 +101,7 @@ TextTheme _buildAppleTextTheme(ColorScheme cs) {
     titleMedium: TextStyle(
       fontFamily: kAppleFontFamily,
       fontFamilyFallback: kAppleFontFallback,
-      fontSize: 17,
+      fontSize: 19,
       fontWeight: FontWeight.w600,
       height: bodyHeight,
       letterSpacing: bodySpacing,
@@ -108,7 +110,7 @@ TextTheme _buildAppleTextTheme(ColorScheme cs) {
     bodyLarge: TextStyle(
       fontFamily: kAppleFontFamily,
       fontFamilyFallback: kAppleFontFallback,
-      fontSize: 17,
+      fontSize: 19,
       fontWeight: FontWeight.w400,
       height: bodyHeight,
       letterSpacing: bodySpacing,
@@ -117,16 +119,34 @@ TextTheme _buildAppleTextTheme(ColorScheme cs) {
     bodyMedium: TextStyle(
       fontFamily: kAppleFontFamily,
       fontFamilyFallback: kAppleFontFallback,
-      fontSize: 14,
+      fontSize: minFont,
       fontWeight: FontWeight.w400,
       height: 1.47,
       letterSpacing: 0,
       color: AppleColors.textPrimary,
     ),
+    bodySmall: TextStyle(
+      fontFamily: kAppleFontFamily,
+      fontFamilyFallback: kAppleFontFallback,
+      fontSize: minFont,
+      fontWeight: FontWeight.w400,
+      height: 1.45,
+      letterSpacing: 0,
+      color: AppleColors.textSecondary,
+    ),
     labelLarge: TextStyle(
       fontFamily: kAppleFontFamily,
       fontFamilyFallback: kAppleFontFallback,
-      fontSize: 12,
+      fontSize: minFont,
+      fontWeight: FontWeight.w400,
+      height: 1.0,
+      letterSpacing: 0,
+      color: AppleColors.textSecondary,
+    ),
+    labelSmall: TextStyle(
+      fontFamily: kAppleFontFamily,
+      fontFamilyFallback: kAppleFontFallback,
+      fontSize: minFont,
       fontWeight: FontWeight.w400,
       height: 1.0,
       letterSpacing: 0,

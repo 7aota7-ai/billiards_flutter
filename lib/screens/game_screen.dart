@@ -7,6 +7,7 @@ import '../models/scoreboard_models.dart';
 import '../services/game_session_storage.dart';
 import '../services/match_result_repository.dart';
 import '../theme/apple_theme.dart';
+import '../widgets/matchup_stats_sheet.dart';
 
 class GameScreenArgs {
   const GameScreenArgs({required this.setup});
@@ -318,6 +319,7 @@ class _GameScreenState extends State<GameScreen> {
             final idx = _match.currentSet - 1;
             if (idx >= 0 && idx < _match.setResults.length) {
               _match.setResults[idx] = i;
+              _recordCurrentSetUsedSeconds(idx);
             }
             _match.setWins[i]++;
             final firstTo = _s.firstToWinSets;
@@ -359,6 +361,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _nextSet() {
+    _stopTick();
     setState(() {
       _match.scores[0] = 0;
       _match.scores[1] = 0;
@@ -366,10 +369,12 @@ class _GameScreenState extends State<GameScreen> {
       _match.fouls[1] = 0;
       _match.gameOver = false;
       _match.resultRecorded = false;
+      _match.liveTimer = _createInitialTimer();
       if (_s.maxSets > 0) {
         _match.currentSet++;
         if (_match.currentSet > _match.setResults.length) {
           _match.setResults.add(null);
+          _match.setUsedSeconds.add(null);
         }
       }
     });
@@ -383,6 +388,9 @@ class _GameScreenState extends State<GameScreen> {
       _match.scores[1] = 0;
       for (var i = 0; i < _match.setResults.length; i++) {
         _match.setResults[i] = null;
+        if (i < _match.setUsedSeconds.length) {
+          _match.setUsedSeconds[i] = null;
+        }
       }
       _match.currentSet = 1;
       _match.setWins[0] = 0;
@@ -417,6 +425,7 @@ class _GameScreenState extends State<GameScreen> {
         final idx = _match.currentSet - 1;
         if (idx >= 0 && idx < _match.setResults.length) {
           _match.setResults[idx] = opp;
+          _recordCurrentSetUsedSeconds(idx);
         }
         _match.setWins[opp]++;
         final firstTo = _s.firstToWinSets;
@@ -461,6 +470,22 @@ class _GameScreenState extends State<GameScreen> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
+  void _recordCurrentSetUsedSeconds(int setIndex) {
+    if (_s.maxSets == 0 ||
+        _s.timerTab != TimerTabKind.totalThenShot ||
+        setIndex < 0 ||
+        setIndex >= _match.setUsedSeconds.length ||
+        _match.setUsedSeconds[setIndex] != null) {
+      return;
+    }
+    final t = _match.liveTimer;
+    if (t is! LiveTimerA) return;
+    final total = _s.aTotalMinutes * 60;
+    final used0 = (total - t.remain[0]).clamp(0, total);
+    final used1 = (total - t.remain[1]).clamp(0, total);
+    _match.setUsedSeconds[setIndex] = [used0, used1];
+  }
+
   int? _winnerIndex() {
     if (!_match.gameOver) return null;
     if (_s.maxSets > 0) {
@@ -488,7 +513,21 @@ class _GameScreenState extends State<GameScreen> {
         aTotalMinutes: _s.aTotalMinutes,
         aShotSeconds: _s.aShotSeconds,
         bShotSeconds: _s.bShotSeconds,
+        setUsedSeconds: _match.setUsedSeconds
+            .whereType<List<int>>()
+            .map((e) => [e[0], e[1]])
+            .toList(),
       ),
+    );
+  }
+
+  Future<void> _showMatchupStatsFromGame() async {
+    final stats = await _resultRepo.loadStats(_s.p2OpponentKey);
+    if (!mounted) return;
+    await showMatchupStatsSheet(
+      context,
+      opponentName: _s.p2Name,
+      stats: stats,
     );
   }
 
@@ -610,6 +649,7 @@ class _GameScreenState extends State<GameScreen> {
                 setup: _s,
                 match: _match,
                 onNextSet: _nextSet,
+                onShowStats: _showMatchupStatsFromGame,
               ),
             ),
         ],
@@ -623,11 +663,13 @@ class _MatchOverOverlay extends StatefulWidget {
     required this.setup,
     required this.match,
     required this.onNextSet,
+    required this.onShowStats,
   });
 
   final MatchSetup setup;
   final MatchState match;
   final VoidCallback onNextSet;
+  final VoidCallback onShowStats;
 
   @override
   State<_MatchOverOverlay> createState() => _MatchOverOverlayState();
@@ -770,6 +812,10 @@ class _MatchOverOverlayState extends State<_MatchOverOverlay>
                               TextButton(
                                 onPressed: widget.onNextSet,
                                 child: const Text('次のセットへ'),
+                              ),
+                              TextButton(
+                                onPressed: widget.onShowStats,
+                                child: const Text('対戦成績を表示'),
                               ),
                             ],
                           ),
@@ -996,14 +1042,17 @@ class _TimerSection extends StatelessWidget {
                 letterSpacing: 2,
               ),
           sub: sub,
+          helperText: 'ボタンをタップするとタイマーが作動します',
           actions: [
-            FilledButton(
+            _ActivePlayerButton(
+              label: match.names[0],
+              active: t.running && t.activePlayer == 0,
               onPressed: () => onAStartPlayer(0),
-              child: Text(match.names[0]),
             ),
-            FilledButton(
+            _ActivePlayerButton(
+              label: match.names[1],
+              active: t.running && t.activePlayer == 1,
               onPressed: () => onAStartPlayer(1),
-              child: Text(match.names[1]),
             ),
             FilledButton(
               onPressed: onAPause,
@@ -1261,7 +1310,8 @@ class _PlayerCard extends StatelessWidget {
                 ),
                 child: Text(
                   'ファウル',
-                  style: tt.labelLarge?.copyWith(
+                  style: tt.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w400,
                     color: match.gameOver
                         ? AppleColors.glyphGraySecondary
                         : AppleColors.appleBlue,
@@ -1289,7 +1339,8 @@ class _PlayerCard extends StatelessWidget {
                 ),
                 child: Text(
                   'リセット',
-                  style: tt.labelLarge?.copyWith(
+                  style: tt.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w400,
                     color: match.gameOver || fc == 0
                         ? AppleColors.glyphGraySecondary
                         : AppleColors.appleBlue,
@@ -1340,6 +1391,35 @@ class _PlayerCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ActivePlayerButton extends StatelessWidget {
+  const _ActivePlayerButton({
+    required this.label,
+    required this.active,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    if (active) {
+      return FilledButton(
+        onPressed: onPressed,
+        child: Text(label),
+      );
+    }
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        backgroundColor: AppleColors.white,
+      ),
+      child: Text(label),
     );
   }
 }

@@ -101,6 +101,7 @@ class GameSessionStorage {
         'setWins': m.setWins,
         'currentSet': m.currentSet,
         'setResults': m.setResults,
+        'setUsedSeconds': m.setUsedSeconds,
         'gameOver': m.gameOver,
         'resultRecorded': m.resultRecorded,
         'liveTimer': _liveTimerToJson(m.liveTimer),
@@ -137,6 +138,18 @@ class GameSessionStorage {
     for (var i = 0; i < m.setResults.length && i < setResultsRaw.length; i++) {
       final v = setResultsRaw[i];
       m.setResults[i] = v == null ? null : (v as num).toInt();
+    }
+    final setUsedRaw = (j['setUsedSeconds'] as List?) ?? const [];
+    for (var i = 0; i < m.setUsedSeconds.length && i < setUsedRaw.length; i++) {
+      final v = setUsedRaw[i];
+      if (v is List && v.length == 2) {
+        m.setUsedSeconds[i] = [
+          (v[0] as num).toInt(),
+          (v[1] as num).toInt(),
+        ];
+      } else {
+        m.setUsedSeconds[i] = null;
+      }
     }
     return m;
   }

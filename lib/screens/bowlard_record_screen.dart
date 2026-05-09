@@ -107,10 +107,11 @@ class _BowlardRecordScreenState extends State<BowlardRecordScreen> {
   }
 
   String _gradeFor(int score) {
-    if (score < 40) return 'ビギナー';
-    if (score < 80) return 'C級';
-    if (score < 150) return 'B級';
-    return 'A級';
+    if (score >= 200) return 'SA級';
+    if (score >= 160) return 'A級';
+    if (score >= 100) return 'B級';
+    if (score >= 30) return 'C級';
+    return 'ビギナー';
   }
 
   List<int?> _buildCumulativePreview() {
@@ -331,16 +332,12 @@ class _BowlardRecordScreenState extends State<BowlardRecordScreen> {
                             ?.copyWith(color: AppleColors.glyphGraySecondary),
                       ),
                       const SizedBox(height: 12),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: List.generate(10, (i) {
-                            return Padding(
-                              padding: EdgeInsets.only(right: i == 9 ? 0 : 6),
-                              child: _scoreFrameCell(i, cumulative[i]),
-                            );
-                          }),
-                        ),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: List.generate(10, (i) {
+                          return _scoreFrameCell(i, cumulative[i]);
+                        }),
                       ),
                       const SizedBox(height: 10),
                       Row(
@@ -598,7 +595,7 @@ class _BowlardRecordScreenState extends State<BowlardRecordScreen> {
       textAlign: alignRight ? TextAlign.right : TextAlign.left,
       style: const TextStyle(
         color: AppleColors.nearBlack,
-        fontSize: 13,
+        fontSize: 16,
         fontWeight: FontWeight.w700,
       ),
       cursorColor: AppleColors.nearBlack,
@@ -608,6 +605,7 @@ class _BowlardRecordScreenState extends State<BowlardRecordScreen> {
         hintText: hint,
         hintStyle: const TextStyle(
           color: AppleColors.glyphGraySecondary,
+          fontSize: 16,
           fontWeight: FontWeight.w600,
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),

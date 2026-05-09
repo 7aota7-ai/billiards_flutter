@@ -1128,6 +1128,14 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
 
+  bool _isNearBallCenter(Offset p, BallInstance b, double thresholdPx) {
+    final c = Offset(
+      _felt.left + b.x * _felt.width,
+      _felt.top + b.y * _felt.height,
+    );
+    return (p - c).distance <= thresholdPx;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1650,7 +1658,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       visualDensity: VisualDensity.compact,
       minimumSize: const WidgetStatePropertyAll(Size(0, 34)),
       textStyle: const WidgetStatePropertyAll(
-        TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
       padding: const WidgetStatePropertyAll(
         EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1693,6 +1701,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                     _trajMode = !_trajMode;
                     _trajEditMode = false;
                     _selCueId = null;
+                    _spAxisBallId = null;
                     _status = _trajMode ? '軌道モード: 手玉→的球の順にタップ' : 'ドラッグで移動';
                   }),
                   child: const Text('軌道描画'),
@@ -1761,7 +1770,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           child: Text(
             _status,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 12,
+                  fontSize: 16,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
           ),
@@ -1885,6 +1894,24 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           child: Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (e) {
+              if (MediaQuery.of(context).size.shortestSide < 700 &&
+                  _spAxisBallId != null &&
+                  !_trajMode) {
+                final p = e.localPosition;
+                final hitBall = _balls.any(
+                  (b) => b.onTable && _isNearBallCenter(p, b, 28),
+                );
+                final axisBall = _balls.cast<BallInstance?>().firstWhere(
+                      (x) => x?.def.id == _spAxisBallId && x!.onTable,
+                      orElse: () => null,
+                    );
+                final hitAxis = axisBall != null &&
+                    ((p.dx - (_felt.left + axisBall.x * _felt.width)).abs() <= 18 ||
+                        (p.dy - (_felt.top + axisBall.y * _felt.height)).abs() <= 18);
+                if (!hitBall && !hitAxis) {
+                  setState(() => _spAxisBallId = null);
+                }
+              }
               if (!_trajMode || !_trajEditMode) return;
               _pickTrajControl(e.localPosition);
             },

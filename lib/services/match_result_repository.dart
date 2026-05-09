@@ -33,6 +33,7 @@ class MatchResultRepository {
     required int aTotalMinutes,
     required int aShotSeconds,
     required int bShotSeconds,
+    required List<List<int>> setUsedSeconds,
   }) async {
     await ensureLoaded();
     final map = _loadMap();
@@ -42,6 +43,18 @@ class MatchResultRepository {
       ...?base?.timerModeCounts,
     };
     modeCounts[timerTab.name] = (modeCounts[timerTab.name] ?? 0) + 1;
+    final history = <MatchHistoryEntry>[
+      ...?base?.matchHistory,
+      MatchHistoryEntry(
+        atMs: now,
+        myWin: myWin,
+        setUsedSeconds: setUsedSeconds,
+      ),
+    ];
+    const keep = 200;
+    if (history.length > keep) {
+      history.removeRange(0, history.length - keep);
+    }
     final next = MatchupStatsRecord(
       opponentId: opponentId,
       matches: (base?.matches ?? 0) + 1,
@@ -54,6 +67,7 @@ class MatchResultRepository {
       lastATotalMinutes: aTotalMinutes,
       lastAShotSeconds: aShotSeconds,
       lastBShotSeconds: bShotSeconds,
+      matchHistory: history,
     );
     map[opponentId] = next;
     await _saveMap(map);

@@ -43,6 +43,7 @@ class _CountNineScreenState extends State<CountNineScreen> {
   final List<int> _scores = [0, 0];
   final List<int> _fouls = [0, 0];
   final Set<int> _disabledBalls = <int>{};
+  final Set<int> _invalidBalls = <int>{};
   final Map<int, int> _ballOwner = <int, int>{};
   int _breakStarter = 0;
   int? _winner;
@@ -64,33 +65,44 @@ class _CountNineScreenState extends State<CountNineScreen> {
 
   void _onPotBall(int player, int number) {
     if (_winner != null) return;
-    if (_disabledBalls.contains(number)) return;
+    if (_invalidBalls.contains(number)) return;
+    final owner = _ballOwner[number];
     final delta = number == 9 ? 2 : 1;
     setState(() {
-      _scores[player] = (_scores[player] + delta).clamp(0, 9999);
-      _fouls[player] = 0;
-      _disabledBalls.add(number);
-      _ballOwner[number] = player;
-      if (number == 9) {
-        // 9番が入ったら次ラック扱いとしてボール状態を全解除する。
-        _disabledBalls.clear();
-        _ballOwner.clear();
-      }
-      if (_scores[player] >= _targets[player]) {
-        _winner = player;
+      if (owner != null) {
+        // すでに得点済みの球はタップで得点取り消し
+        _scores[owner] = (_scores[owner] - delta).clamp(0, 9999);
+        _disabledBalls.remove(number);
+        _ballOwner.remove(number);
+      } else {
+        _scores[player] = (_scores[player] + delta).clamp(0, 9999);
+        _fouls[player] = 0;
+        _disabledBalls.add(number);
+        _ballOwner[number] = player;
+        if (number == 9) {
+          // 9番が入ったら次ラック扱いとしてボール状態を全解除する。
+          _disabledBalls.clear();
+          _invalidBalls.clear();
+          _ballOwner.clear();
+        }
+        if (_scores[player] >= _targets[player]) {
+          _winner = player;
+        }
       }
     });
   }
 
   void _onBallLongPress(int number) {
     if (_winner != null) return;
-    final owner = _ballOwner[number];
-    if (owner == null) return;
     final delta = number == 9 ? 2 : 1;
     setState(() {
-      _scores[owner] = (_scores[owner] - delta).clamp(0, 9999);
-      _disabledBalls.remove(number);
-      _ballOwner.remove(number);
+      final owner = _ballOwner[number];
+      if (owner != null) {
+        _scores[owner] = (_scores[owner] - delta).clamp(0, 9999);
+        _disabledBalls.remove(number);
+        _ballOwner.remove(number);
+      }
+      _invalidBalls.add(number);
     });
   }
 
@@ -119,6 +131,7 @@ class _CountNineScreenState extends State<CountNineScreen> {
       _fouls[0] = 0;
       _fouls[1] = 0;
       _disabledBalls.clear();
+      _invalidBalls.clear();
       _ballOwner.clear();
       _breakStarter = 0;
       _winner = null;
@@ -169,6 +182,7 @@ class _CountNineScreenState extends State<CountNineScreen> {
                   required int target,
                   required int foulCount,
                   required bool isStarter,
+                  required bool showInvalidBallArea,
                   required VoidCallback? onSelectStarter,
                   required ValueChanged<int> onBallTap,
                   required VoidCallback onFoul,
@@ -185,6 +199,9 @@ class _CountNineScreenState extends State<CountNineScreen> {
                     onBallTap: onBallTap,
                     onBallLongPress: _onBallLongPress,
                     isBallDisabled: (n) => _disabledBalls.contains(n),
+                  isBallInvalid: (n) => _invalidBalls.contains(n),
+                  invalidBalls: _invalidBalls.toList()..sort(),
+                    showInvalidBallArea: showInvalidBallArea,
                     onFoul: onFoul,
                     onFoulReset: onFoulReset,
                   );
@@ -197,6 +214,7 @@ class _CountNineScreenState extends State<CountNineScreen> {
                   target: _targets[0],
                   foulCount: _fouls[0],
                   isStarter: _breakStarter == 0,
+                  showInvalidBallArea: true,
                   onSelectStarter: _canChangeStarter ? () => _selectStarter(0) : null,
                   onBallTap: (n) => _onPotBall(0, n),
                   onFoul: () => _onFoul(0),
@@ -209,6 +227,7 @@ class _CountNineScreenState extends State<CountNineScreen> {
                   target: _targets[1],
                   foulCount: _fouls[1],
                   isStarter: _breakStarter == 1,
+                  showInvalidBallArea: false,
                   onSelectStarter: _canChangeStarter ? () => _selectStarter(1) : null,
                   onBallTap: (n) => _onPotBall(1, n),
                   onFoul: () => _onFoul(1),
@@ -245,7 +264,8 @@ class _CountNineScreenState extends State<CountNineScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 2),
               child: Text(
                 '※ 先攻ブレイクは名前をタップすることで切り替えられます\n'
-                '※ ボールをタップで得点が入ります。誤タップした場合は長押しでキャンセルできます。',
+                '※ ボールをタップで得点。得点済みボールはタップで取り消し。\n'
+                '※ 長押しで無効球にします（無効球は得点に含まれません）。',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppleColors.glyphGraySecondary,
                     ),
@@ -315,6 +335,9 @@ class _CountNinePlayerCard extends StatelessWidget {
     required this.onBallTap,
     required this.onBallLongPress,
     required this.isBallDisabled,
+    required this.isBallInvalid,
+    required this.invalidBalls,
+    required this.showInvalidBallArea,
     required this.onFoul,
     required this.onFoulReset,
   });
@@ -329,6 +352,9 @@ class _CountNinePlayerCard extends StatelessWidget {
   final ValueChanged<int> onBallTap;
   final ValueChanged<int> onBallLongPress;
   final bool Function(int number) isBallDisabled;
+  final bool Function(int number) isBallInvalid;
+  final List<int> invalidBalls;
+  final bool showInvalidBallArea;
   final VoidCallback onFoul;
   final VoidCallback onFoulReset;
 
@@ -346,13 +372,22 @@ class _CountNinePlayerCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: tt.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (showInvalidBallArea)
+                      _InvalidBallArea(invalidBalls: invalidBalls),
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -395,6 +430,7 @@ class _CountNinePlayerCard extends StatelessWidget {
                 return _BallTapChip(
                   number: n,
                   disabled: isBallDisabled(n),
+                  invalid: isBallInvalid(n),
                   onTap: () => onBallTap(n),
                   onLongPress: () => onBallLongPress(n),
                 );
@@ -460,12 +496,14 @@ class _BallTapChip extends StatelessWidget {
   const _BallTapChip({
     required this.number,
     required this.disabled,
+    required this.invalid,
     required this.onTap,
     required this.onLongPress,
   });
 
   final int number;
   final bool disabled;
+  final bool invalid;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -474,13 +512,15 @@ class _BallTapChip extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(999),
       onTap: onTap,
-      onLongPress: disabled ? onLongPress : null,
+      onLongPress: onLongPress,
       child: Container(
         width: 24,
         height: 24,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: disabled ? AppleColors.glyphGraySecondary : _ballColor(number),
+          color: (disabled || invalid)
+              ? AppleColors.glyphGraySecondary
+              : _ballColor(number),
           boxShadow: const [
             BoxShadow(
               color: Color.fromRGBO(0, 0, 0, 0.25),
@@ -490,13 +530,31 @@ class _BallTapChip extends StatelessWidget {
           ],
         ),
         alignment: Alignment.center,
-        child: Text(
-          '$number',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 10,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: Text(
+                '$number',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 10,
+                    ),
               ),
+            ),
+            if (invalid)
+              Center(
+                child: Transform.rotate(
+                  angle: -0.8,
+                  child: Container(
+                    width: 18,
+                    height: 1.8,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -524,5 +582,31 @@ class _BallTapChip extends StatelessWidget {
       default:
         return const Color(0xFFFFD54F);
     }
+  }
+}
+
+class _InvalidBallArea extends StatelessWidget {
+  const _InvalidBallArea({required this.invalidBalls});
+
+  final List<int> invalidBalls;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppleColors.lightGray,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppleColors.separator),
+      ),
+      child: Text(
+        invalidBalls.isEmpty ? '無効球: -' : '無効球: ${invalidBalls.join(',')}',
+        style: tt.labelSmall?.copyWith(
+          color: AppleColors.glyphGraySecondary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
   }
 }
