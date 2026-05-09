@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'screens/ball_layout_editor_screen.dart';
 import 'screens/bowlard_record_screen.dart';
 import 'screens/count_nine_screen.dart';
+import 'screens/five_nine_screen.dart';
 import 'screens/game_screen.dart';
 import 'screens/setup_screen.dart';
 import 'services/game_session_storage.dart';
@@ -50,6 +51,11 @@ class BilliardsApp extends StatelessWidget {
             return MaterialPageRoute<void>(
               settings: const RouteSettings(name: '/bowlard'),
               builder: (_) => const BowlardRecordScreen(),
+            );
+          case '/five-nine':
+            return MaterialPageRoute<void>(
+              settings: const RouteSettings(name: '/five-nine'),
+              builder: (_) => const FiveNineScreen(),
             );
           case '/count-nine':
             final args = settings.arguments;
@@ -105,6 +111,13 @@ class BilliardsApp extends StatelessWidget {
 String _normalizeInitialRoute() {
   final path = Uri.base.path.trim();
   if (path.isEmpty || path == '/') return '/setup';
-  const allowed = {'/setup', '/scoreboard', '/layout', '/bowlard', '/count-nine'};
+  const allowed = {
+    '/setup',
+    '/scoreboard',
+    '/layout',
+    '/bowlard',
+    '/count-nine',
+    '/five-nine',
+  };
   return allowed.contains(path) ? path : '/setup';
 }

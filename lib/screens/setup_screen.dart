@@ -58,6 +58,9 @@ class _SetupScreenState extends State<SetupScreen> {
   final _aShot = TextEditingController(text: '25');
   final _bShot = TextEditingController(text: '45');
 
+  bool _timerSettingsExpandedA = false;
+  bool _timerSettingsExpandedB = false;
+
   int _maxSets = 0;
 
   bool _targetsValid = true;
@@ -497,6 +500,10 @@ class _SetupScreenState extends State<SetupScreen> {
     await Navigator.of(context).pushNamed<void>('/layout');
   }
 
+  Future<void> _openFiveNineDraft() async {
+    await Navigator.of(context).pushNamed<void>('/five-nine');
+  }
+
   Future<void> _openCountNine() async {
     final p1 = _p1Name.text.trim().isEmpty ? 'あなた' : _p1Name.text.trim();
     final p2 = _p2Name.text.trim().isEmpty ? '相手' : _p2Name.text.trim();
@@ -558,6 +565,8 @@ class _SetupScreenState extends State<SetupScreen> {
                 await _openBowlardRecord();
               } else if (value == 'layout') {
                 await _openBallLayoutEditor();
+              } else if (value == 'five9') {
+                await _openFiveNineDraft();
               } else if (value == 'count9') {
                 await _openCountNine();
               }
@@ -574,6 +583,10 @@ class _SetupScreenState extends State<SetupScreen> {
               PopupMenuItem<String>(
                 value: 'count9',
                 child: Text('カウントナイン'),
+              ),
+              PopupMenuItem<String>(
+                value: 'five9',
+                child: Text('5-9（5-10）'),
               ),
             ],
           ),
@@ -941,31 +954,62 @@ class _SetupScreenState extends State<SetupScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  _TimerBottomBand(
-                                    height: timerBandH,
-                                    title: '時間の設定',
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(
-                                          child: _TimerNumericField(
-                                            label: '各自',
-                                            controller: _aTotal,
-                                            suffix: '分',
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: _TimerNumericField(
-                                            label: '時間切れ後',
-                                            controller: _aShot,
-                                            suffix: '秒',
-                                          ),
-                                        ),
-                                      ],
+                                  TextButton.icon(
+                                    style: TextButton.styleFrom(
+                                      alignment: Alignment.centerLeft,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4, vertical: 6),
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    onPressed: () => setState(
+                                      () => _timerSettingsExpandedA =
+                                          !_timerSettingsExpandedA,
+                                    ),
+                                    icon: Icon(
+                                      _timerSettingsExpandedA
+                                          ? Icons.expand_less
+                                          : Icons.expand_more,
+                                      size: 22,
+                                      color: AppleColors.appleBlue,
+                                    ),
+                                    label: Text(
+                                      _timerSettingsExpandedA
+                                          ? '時間の設定を閉じる'
+                                          : '時間の設定を表示',
+                                      style: tt.labelLarge?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: AppleColors.appleBlue,
+                                      ),
                                     ),
                                   ),
+                                  if (_timerSettingsExpandedA) ...[
+                                    const SizedBox(height: 8),
+                                    _TimerBottomBand(
+                                      height: timerBandH,
+                                      title: '時間の設定',
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: _TimerNumericField(
+                                              label: '各自',
+                                              controller: _aTotal,
+                                              suffix: '分',
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: _TimerNumericField(
+                                              label: '時間切れ後',
+                                              controller: _aShot,
+                                              suffix: '秒',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             );
@@ -985,76 +1029,81 @@ class _SetupScreenState extends State<SetupScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  _TimerBottomBand(
-                                    height: timerBandH,
-                                    title: '時間の設定',
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(
-                                          child: _TimerNumericField(
-                                            label: '制限時間',
-                                            controller: _bShot,
-                                            suffix: '秒',
-                                          ),
-                                        ),
-                                      ],
+                                  TextButton.icon(
+                                    style: TextButton.styleFrom(
+                                      alignment: Alignment.centerLeft,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4, vertical: 6),
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    onPressed: () => setState(
+                                      () => _timerSettingsExpandedB =
+                                          !_timerSettingsExpandedB,
+                                    ),
+                                    icon: Icon(
+                                      _timerSettingsExpandedB
+                                          ? Icons.expand_less
+                                          : Icons.expand_more,
+                                      size: 22,
+                                      color: AppleColors.appleBlue,
+                                    ),
+                                    label: Text(
+                                      _timerSettingsExpandedB
+                                          ? '時間の設定を閉じる'
+                                          : '時間の設定を表示',
+                                      style: tt.labelLarge?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: AppleColors.appleBlue,
+                                      ),
                                     ),
                                   ),
+                                  if (_timerSettingsExpandedB) ...[
+                                    const SizedBox(height: 8),
+                                    _TimerBottomBand(
+                                      height: timerBandH,
+                                      title: '時間の設定',
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: _TimerNumericField(
+                                              label: '制限時間',
+                                              controller: _bShot,
+                                              suffix: '秒',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             );
                         Widget tileC() => SizedBox(
                               width: narrow ? double.infinity : null,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  SizedBox(
-                                    height: cardHeight,
-                                    child: _TimerModeTile(
-                                      title: 'C  制限なし',
-                                      subtitle: 'タイマーなしで進行します',
-                                      selected: _tab == TimerTabKind.unlimited,
-                                      onTap: () => setState(
-                                          () => _tab = TimerTabKind.unlimited),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  const _TimerBottomBand(
-                                    height: timerBandH,
-                                    title: '時間の設定',
-                                    child: _TimerBottomBandPlaceholder(
-                                      text: '入力なし',
-                                    ),
-                                  ),
-                                ],
+                              child: SizedBox(
+                                height: cardHeight,
+                                child: _TimerModeTile(
+                                  title: 'C  制限なし',
+                                  subtitle: 'タイマーなしで進行します',
+                                  selected: _tab == TimerTabKind.unlimited,
+                                  onTap: () => setState(
+                                      () => _tab = TimerTabKind.unlimited),
+                                ),
                               ),
                             );
                         Widget tileD() => SizedBox(
                               width: narrow ? double.infinity : null,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  SizedBox(
-                                    height: cardHeight,
-                                    child: _TimerModeTile(
-                                      title: 'D  制限なし（カウントナイン）',
-                                      subtitle: 'カウントナイン専用スコアボード',
-                                      selected: _tab == TimerTabKind.countNine,
-                                      onTap: () => setState(
-                                          () => _tab = TimerTabKind.countNine),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  const _TimerBottomBand(
-                                    height: timerBandH,
-                                    title: '時間の設定',
-                                    child: _TimerBottomBandPlaceholder(
-                                      text: '入力なし',
-                                    ),
-                                  ),
-                                ],
+                              child: SizedBox(
+                                height: cardHeight,
+                                child: _TimerModeTile(
+                                  title: 'D  制限なし（カウントナイン）',
+                                  subtitle: 'カウントナイン専用スコアボード',
+                                  selected: _tab == TimerTabKind.countNine,
+                                  onTap: () => setState(
+                                      () => _tab = TimerTabKind.countNine),
+                                ),
                               ),
                             );
 
@@ -1193,7 +1242,15 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 child: Text(
                   '試合開始',
-                  style: tt.titleMedium?.copyWith(height: 1.2),
+                  style: TextStyle(
+                    inherit: true,
+                    fontFamily: tt.titleMedium?.fontFamily,
+                    fontFamilyFallback: tt.titleMedium?.fontFamilyFallback,
+                    fontSize: tt.titleMedium?.fontSize,
+                    fontWeight: tt.titleMedium?.fontWeight,
+                    letterSpacing: tt.titleMedium?.letterSpacing,
+                    height: 1.2,
+                  ),
                 ),
               ),
             ),
@@ -1474,7 +1531,7 @@ class _TargetAdjustButton extends StatelessWidget {
   }
 }
 
-/// タイマー各列の下段: A/B と同じ高さ・枠線で統一する
+/// タイマー A/B の「時間の設定」展開時の入力枠
 class _TimerBottomBand extends StatelessWidget {
   const _TimerBottomBand({
     required this.height,
@@ -1514,29 +1571,6 @@ class _TimerBottomBand extends StatelessWidget {
               Expanded(child: child),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TimerBottomBandPlaceholder extends StatelessWidget {
-  const _TimerBottomBandPlaceholder({
-    required this.text,
-  });
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    return Align(
-      alignment: Alignment.center,
-      child: Text(
-        text,
-        style: tt.labelLarge?.copyWith(
-          color: AppleColors.glyphGraySecondary,
-          fontWeight: FontWeight.w500,
         ),
       ),
     );
