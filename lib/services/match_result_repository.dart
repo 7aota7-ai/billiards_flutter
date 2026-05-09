@@ -77,4 +77,9 @@ class MatchResultRepository {
     await ensureLoaded();
     return _loadMap()[opponentId];
   }
+
+  Future<Map<String, MatchupStatsRecord>> loadAllStats() async {
+    await ensureLoaded();
+    return _loadMap();
+  }
 }

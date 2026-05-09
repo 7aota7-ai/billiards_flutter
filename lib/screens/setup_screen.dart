@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/elo_rating_models.dart';
 import '../models/scoreboard_models.dart';
 import '../models/opponent_record.dart';
 import '../models/match_result_record.dart';
+import '../services/elo_rating_repository.dart';
 import '../services/match_result_repository.dart';
 import '../services/opponent_repository.dart';
 import '../services/self_profile_repository.dart';
@@ -14,6 +16,16 @@ import 'game_screen.dart';
 
 /// `_LabeledRow` のラベル列幅。入力・リンクの左端を揃える。
 const double _kLabeledContentInset = 52;
+
+class _ResolvedKeys {
+  const _ResolvedKeys({
+    required this.p1Key,
+    required this.p2Key,
+  });
+
+  final String p1Key;
+  final String p2Key;
+}
 
 class SetupScreen extends StatefulWidget {
   const SetupScreen({super.key});
@@ -26,6 +38,7 @@ class _SetupScreenState extends State<SetupScreen> {
   final _oppRepo = OpponentRepository();
   final _selfRepo = SelfProfileRepository();
   final _resultRepo = MatchResultRepository();
+  final _eloRepo = EloRatingRepository();
   final _p1Name = TextEditingController(text: 'あなた');
   final _p2Name = TextEditingController(text: '相手');
   final _p2Search = TextEditingController();
@@ -56,6 +69,7 @@ class _SetupScreenState extends State<SetupScreen> {
       _oppRepo.ensureLoaded(),
       _selfRepo.ensureLoaded(),
       _resultRepo.ensureLoaded(),
+      _eloRepo.ensureLoaded(),
     ]).then((_) {
       if (!mounted) return;
       final self = _selfRepo.load();
@@ -141,6 +155,103 @@ class _SetupScreenState extends State<SetupScreen> {
       opponentName: _p2Name.text.trim().isEmpty ? '相手' : _p2Name.text.trim(),
       stats: _selectedStats,
     );
+  }
+
+  Future<void> _showAllMatchHistorySheet() async {
+    await Future.wait([
+      _oppRepo.ensureLoaded(),
+      _resultRepo.ensureLoaded(),
+      _eloRepo.ensureLoaded(),
+    ]);
+    final self = _selfRepo.load();
+    final statsMap = await _resultRepo.loadAllStats();
+    final scoreElo = await _eloRepo.loadPool(EloPool.scoreboard);
+    final c9Elo = await _eloRepo.loadPool(EloPool.countNine);
+    if (!mounted) return;
+
+    final opponents = _oppRepo.getAll();
+    final nameById = <String, String>{
+      for (final o in opponents) o.id: o.displayName,
+    };
+
+    final items = statsMap.entries.toList()
+      ..sort((a, b) => b.value.updatedAtMs.compareTo(a.value.updatedAtMs));
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final tt = Theme.of(context).textTheme;
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.75,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Text(
+                    'これまでの対戦成績',
+                    style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (self != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Text(
+                      'あなたのElo  通常:${scoreElo[self.id]?.rating ?? 1500}  カウントナイン:${c9Elo[self.id]?.rating ?? 1500}',
+                      style: tt.labelLarge?.copyWith(
+                        color: AppleColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                const Divider(height: 1),
+                Expanded(
+                  child: items.isEmpty
+                      ? Center(
+                          child: Text(
+                            'まだ対戦成績がありません',
+                            style: tt.bodyMedium?.copyWith(
+                              color: AppleColors.glyphGraySecondary,
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: items.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1),
+                          itemBuilder: (context, i) {
+                            final id = items[i].key;
+                            final s = items[i].value;
+                            final name = nameById[id] ?? id;
+                            return ListTile(
+                              title: Text(name),
+                              subtitle: Text(
+                                '${s.wins}勝${s.losses}敗  /  Elo 通常:${scoreElo[id]?.rating ?? 1500}  C9:${c9Elo[id]?.rating ?? 1500}',
+                              ),
+                              trailing: Text(
+                                _formatYmd(DateTime.fromMillisecondsSinceEpoch(
+                                    s.updatedAtMs)),
+                                style: tt.labelLarge?.copyWith(
+                                  color: AppleColors.glyphGraySecondary,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatYmd(DateTime d) {
+    final yy = (d.year % 100).toString().padLeft(2, '0');
+    return '$yy/${d.month}/${d.day}';
   }
 
   Future<void> _deleteOpponent(
@@ -331,24 +442,9 @@ class _SetupScreenState extends State<SetupScreen> {
     final p1 = _p1Name.text.trim().isEmpty ? 'P1' : _p1Name.text.trim();
     final p2 = _p2Name.text.trim().isEmpty ? 'P2' : _p2Name.text.trim();
 
-    await _oppRepo.ensureLoaded();
-    await _selfRepo.ensureLoaded();
-
-    final p1Key = await _selfRepo.userKeyForMatch(
-      displayName: p1,
-      rank: _p1Rank,
-    );
-
-    final String p2Key;
-    if (_p2OpponentId != null) {
-      p2Key = _p2OpponentId!;
-    } else {
-      final rec = await _oppRepo.registerNew(displayName: p2, rank: _p2Rank);
-      p2Key = rec.id;
-      if (mounted) {
-        setState(() => _p2OpponentId = rec.id);
-      }
-    }
+    final keys = await _resolveMatchKeys(p1: p1, p2: p2);
+    final p1Key = keys.p1Key;
+    final p2Key = keys.p2Key;
 
     await _oppRepo.recordMatchPlayed(p2Key);
 
@@ -378,6 +474,8 @@ class _SetupScreenState extends State<SetupScreen> {
           p2Name: p2,
           p1Rank: _p1Rank,
           p2Rank: _p2Rank,
+          p1UserKey: p1Key,
+          p2OpponentKey: p2Key,
         ),
       );
     } else {
@@ -402,6 +500,9 @@ class _SetupScreenState extends State<SetupScreen> {
   Future<void> _openCountNine() async {
     final p1 = _p1Name.text.trim().isEmpty ? 'あなた' : _p1Name.text.trim();
     final p2 = _p2Name.text.trim().isEmpty ? '相手' : _p2Name.text.trim();
+    final keys = await _resolveMatchKeys(p1: p1, p2: p2);
+    await _oppRepo.recordMatchPlayed(keys.p2Key);
+    if (!mounted) return;
     await Navigator.of(context).pushNamed<void>(
       '/count-nine',
       arguments: CountNineArgs(
@@ -409,8 +510,33 @@ class _SetupScreenState extends State<SetupScreen> {
         p2Name: p2,
         p1Rank: _p1Rank,
         p2Rank: _p2Rank,
+        p1UserKey: keys.p1Key,
+        p2OpponentKey: keys.p2Key,
       ),
     );
+  }
+
+  Future<_ResolvedKeys> _resolveMatchKeys({
+    required String p1,
+    required String p2,
+  }) async {
+    await _oppRepo.ensureLoaded();
+    await _selfRepo.ensureLoaded();
+    final p1Key = await _selfRepo.userKeyForMatch(
+      displayName: p1,
+      rank: _p1Rank,
+    );
+    final String p2Key;
+    if (_p2OpponentId != null) {
+      p2Key = _p2OpponentId!;
+    } else {
+      final rec = await _oppRepo.registerNew(displayName: p2, rank: _p2Rank);
+      p2Key = rec.id;
+      if (mounted) {
+        setState(() => _p2OpponentId = rec.id);
+      }
+    }
+    return _ResolvedKeys(p1Key: p1Key, p2Key: p2Key);
   }
 
   @override
@@ -516,11 +642,28 @@ class _SetupScreenState extends State<SetupScreen> {
                             left: _kLabeledContentInset, top: 8),
                         child: Align(
                           alignment: Alignment.centerLeft,
-                          child: Text(
-                            'ユーザID: ${self.id}',
-                            style: tt.labelSmall?.copyWith(
-                              color: AppleColors.glyphGraySecondary,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'ユーザID: ${self.id}',
+                                style: tt.labelSmall?.copyWith(
+                                  color: AppleColors.glyphGraySecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 0, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: _showAllMatchHistorySheet,
+                                child: const Text('これまでの対戦成績を一覧表示'),
+                              ),
+                            ],
                           ),
                         ),
                       );

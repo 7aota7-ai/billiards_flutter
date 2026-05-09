@@ -3,7 +3,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../models/elo_rating_models.dart';
 import '../models/scoreboard_models.dart';
+import '../services/elo_rating_repository.dart';
 import '../services/game_session_storage.dart';
 import '../services/match_result_repository.dart';
 import '../theme/apple_theme.dart';
@@ -31,6 +33,9 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   late MatchState _match;
   final _resultRepo = MatchResultRepository();
+  final _eloRepo = EloRatingRepository();
+  int? _myElo;
+  int? _oppElo;
   Timer? _tick;
   int _startingPlayerB = 0;
   int _activeTurnPlayerB = 0;
@@ -52,6 +57,8 @@ class _GameScreenState extends State<GameScreen> {
     }
     _persistSession();
     unawaited(_resultRepo.ensureLoaded());
+    unawaited(_eloRepo.ensureLoaded());
+    unawaited(_loadCurrentElo());
   }
 
   @override
@@ -503,6 +510,25 @@ class _GameScreenState extends State<GameScreen> {
     if (winner == null || _match.resultRecorded) return;
     _match.resultRecorded = true;
     final myWin = winner == 0;
+    final winnerId = winner == 0 ? _s.p1UserKey : _s.p2OpponentKey;
+    final loserId = winner == 0 ? _s.p2OpponentKey : _s.p1UserKey;
+    unawaited(() async {
+      final update = await _eloRepo.applyMatchResult(
+        winnerId: winnerId,
+        loserId: loserId,
+        pool: EloPool.scoreboard,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (winner == 0) {
+          _myElo = update.winnerAfter;
+          _oppElo = update.loserAfter;
+        } else {
+          _myElo = update.loserAfter;
+          _oppElo = update.winnerAfter;
+        }
+      });
+    }());
     unawaited(
       _resultRepo.recordMatch(
         opponentId: _s.p2OpponentKey,
@@ -529,6 +555,16 @@ class _GameScreenState extends State<GameScreen> {
       opponentName: _s.p2Name,
       stats: stats,
     );
+  }
+
+  Future<void> _loadCurrentElo() async {
+    final me = await _eloRepo.loadRating(_s.p1UserKey, EloPool.scoreboard);
+    final opp = await _eloRepo.loadRating(_s.p2OpponentKey, EloPool.scoreboard);
+    if (!mounted) return;
+    setState(() {
+      _myElo = me.rating;
+      _oppElo = opp.rating;
+    });
   }
 
   @override
@@ -567,6 +603,30 @@ class _GameScreenState extends State<GameScreen> {
                   onAShotPause: _aShotPause,
                   onAShotResume: _aShotResume,
                   onAShotReset: _aShotReset,
+                ),
+                const SizedBox(height: 12),
+                AppleCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Elo(通常)',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          '${_s.p1Name}: ${_myElo ?? 1500}  /  ${_s.p2Name}: ${_oppElo ?? 1500}',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: AppleColors.textSecondary,
+                              ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -1540,7 +1600,7 @@ class _SetSection extends StatelessWidget {
                       TextSpan(text: '${match.names[0]} '),
                       TextSpan(
                         text: '${match.setWins[0]}',
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: AppleColors.systemGreen,
                           fontWeight: FontWeight.w600,
                           letterSpacing: -0.3,
@@ -1549,7 +1609,7 @@ class _SetSection extends StatelessWidget {
                       const TextSpan(text: ' — '),
                       TextSpan(
                         text: '${match.setWins[1]}',
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: AppleColors.systemRed,
                           fontWeight: FontWeight.w600,
                           letterSpacing: -0.3,

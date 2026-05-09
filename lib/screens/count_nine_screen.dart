@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../models/elo_rating_models.dart';
 import '../models/scoreboard_models.dart';
+import '../services/elo_rating_repository.dart';
 import '../theme/apple_theme.dart';
 
 class CountNineArgs {
@@ -9,12 +11,16 @@ class CountNineArgs {
     required this.p2Name,
     required this.p1Rank,
     required this.p2Rank,
+    required this.p1UserKey,
+    required this.p2OpponentKey,
   });
 
   final String p1Name;
   final String p2Name;
   final PlayerRank p1Rank;
   final PlayerRank p2Rank;
+  final String p1UserKey;
+  final String p2OpponentKey;
 }
 
 class CountNineScreen extends StatefulWidget {
@@ -24,18 +30,23 @@ class CountNineScreen extends StatefulWidget {
     required this.p2Name,
     required this.p1Rank,
     required this.p2Rank,
+    required this.p1UserKey,
+    required this.p2OpponentKey,
   });
 
   final String p1Name;
   final String p2Name;
   final PlayerRank p1Rank;
   final PlayerRank p2Rank;
+  final String p1UserKey;
+  final String p2OpponentKey;
 
   @override
   State<CountNineScreen> createState() => _CountNineScreenState();
 }
 
 class _CountNineScreenState extends State<CountNineScreen> {
+  final _eloRepo = EloRatingRepository();
   late final List<int> _targets = [
     _targetForRank(widget.p1Rank),
     _targetForRank(widget.p2Rank),
@@ -47,6 +58,13 @@ class _CountNineScreenState extends State<CountNineScreen> {
   final Map<int, int> _ballOwner = <int, int>{};
   int _breakStarter = 0;
   int? _winner;
+  bool _eloRecorded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _eloRepo.ensureLoaded();
+  }
 
   bool get _canChangeStarter => _scores[0] == 0 && _scores[1] == 0;
 
@@ -87,9 +105,23 @@ class _CountNineScreenState extends State<CountNineScreen> {
         }
         if (_scores[player] >= _targets[player]) {
           _winner = player;
+          _recordEloIfNeeded(player);
         }
       }
     });
+  }
+
+  void _recordEloIfNeeded(int winner) {
+    if (_eloRecorded) return;
+    final winnerId = winner == 0 ? widget.p1UserKey : widget.p2OpponentKey;
+    final loserId = winner == 0 ? widget.p2OpponentKey : widget.p1UserKey;
+    if (winnerId.isEmpty || loserId.isEmpty) return;
+    _eloRecorded = true;
+    _eloRepo.applyMatchResult(
+      winnerId: winnerId,
+      loserId: loserId,
+      pool: EloPool.countNine,
+    );
   }
 
   void _onBallLongPress(int number) {
@@ -135,6 +167,7 @@ class _CountNineScreenState extends State<CountNineScreen> {
       _ballOwner.clear();
       _breakStarter = 0;
       _winner = null;
+      _eloRecorded = false;
     });
   }
 

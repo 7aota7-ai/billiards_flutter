@@ -61,6 +61,8 @@ class BilliardsApp extends StatelessWidget {
                   p2Name: args.p2Name,
                   p1Rank: args.p1Rank,
                   p2Rank: args.p2Rank,
+                  p1UserKey: args.p1UserKey,
+                  p2OpponentKey: args.p2OpponentKey,
                 ),
               );
             }
