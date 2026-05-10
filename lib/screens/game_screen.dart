@@ -429,17 +429,21 @@ class _GameScreenState extends State<GameScreen> {
       _match.fouls[0] = 0;
       _match.fouls[1] = 0;
 
+      // 3ファウル時は「相手に1点加算」が基本。セット/試合終了は
+      // その加点でターゲット到達した場合のみ判定する。
       if (_s.maxSets > 0) {
-        final idx = _match.currentSet - 1;
-        if (idx >= 0 && idx < _match.setResults.length) {
-          _match.setResults[idx] = opp;
-          _recordCurrentSetUsedSeconds(idx);
+        if (_match.scores[opp] >= _match.targets[opp]) {
+          final idx = _match.currentSet - 1;
+          if (idx >= 0 && idx < _match.setResults.length) {
+            _match.setResults[idx] = opp;
+            _recordCurrentSetUsedSeconds(idx);
+          }
+          _match.setWins[opp]++;
+          final firstTo = _s.firstToWinSets;
+          final totalPlayed = _match.setWins[0] + _match.setWins[1];
+          _match.gameOver =
+              _match.setWins[opp] >= firstTo || totalPlayed >= _s.maxSets;
         }
-        _match.setWins[opp]++;
-        final firstTo = _s.firstToWinSets;
-        final totalPlayed = _match.setWins[0] + _match.setWins[1];
-        _match.gameOver =
-            _match.setWins[opp] >= firstTo || totalPlayed >= _s.maxSets;
       } else if (_match.scores[opp] >= _match.targets[opp]) {
         _match.gameOver = true;
       }
