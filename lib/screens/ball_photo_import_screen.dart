@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../models/detected_ball_layout.dart';
+import '../models/table_guide_geometry.dart';
 import '../services/ball_detection_service.dart';
 import '../services/detection_api_settings.dart';
 import '../services/image_bake_service.dart';
@@ -30,12 +31,7 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
   ];
 
   /// Reference felt corners for table_photo-like portrait shots (normalized).
-  static const _guideCorners = <Offset>[
-    Offset(0.254, 0.151),
-    Offset(0.749, 0.151),
-    Offset(0.892, 0.864),
-    Offset(0.111, 0.864),
-  ];
+  static const _guideCorners = TableGuideGeometry.defaultPhotoCorners;
 
   BallDetectionService _service =
       BallDetectionService(baseUrl: DetectionApiSettings.defaultUrl);
@@ -105,7 +101,7 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
           ));
         }
         _updateCornerStatus();
-        _status = 'カメラ撮影を引き継ぎ — API で検出できます';
+        _status = 'カメラ撮影 — 4隅をフェルトに合わせてから「APIで検出」';
       } else {
         _status = 'カメラ撮影を引き継ぎ — 4隅をタップしてください';
       }

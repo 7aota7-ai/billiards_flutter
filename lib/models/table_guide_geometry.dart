@@ -35,6 +35,19 @@ class TableGuideGeometry {
     ];
   }
 
+  /// Portrait table photo — initial felt corners (photo import / browser camera).
+  static const defaultPhotoCorners = <Offset>[
+    Offset(0.254, 0.151),
+    Offset(0.749, 0.151),
+    Offset(0.892, 0.864),
+    Offset(0.111, 0.864),
+  ];
+
+  static List<List<double>> defaultPhotoCornersAsLists() =>
+      defaultPhotoCorners
+          .map((p) => [p.dx, p.dy])
+          .toList(growable: false);
+
   static String get specLabel =>
       'プレイングエリア ${playingLengthCm.toInt()}×${playingWidthCm.toInt()} cm（2:1）';
 }

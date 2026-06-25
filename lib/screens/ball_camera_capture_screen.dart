@@ -9,7 +9,6 @@ import '../services/camera_preview_mapper.dart';
 import '../services/detection_api_settings.dart';
 import '../services/image_bake_service.dart';
 import '../services/pending_capture_store.dart';
-import '../services/pending_photo_import_store.dart';
 import '../theme/apple_theme.dart';
 import '../utils/web_platform.dart';
 
@@ -170,59 +169,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
     await _init();
   }
 
-  List<List<double>> _guideCornersNormalizedLists() {
-    return TableGuideGeometry.guideCornersNormalized()
-        .map((p) => [p.dx, p.dy])
-        .toList(growable: false);
-  }
-
-  Future<void> _detectFromBytes({
-    required Uint8List bytes,
-    required Size imageSize,
-    required List<List<double>> corners,
-  }) async {
-    if (!_serverOk) {
-      if (isMobileWeb) {
-        await _handoffToPhotoImport(
-          bytes: bytes,
-          imageSize: imageSize,
-          corners: corners,
-        );
-        return;
-      }
-      throw StateError(
-        '検出 API が未接続です。PC で tools/ball_detector の API を起動してください。',
-      );
-    }
-    final ySpan = CameraPreviewMapper.cornerYSpan(corners);
-    if (ySpan < 0.35) {
-      throw StateError(
-        'ガイド座標が不正です (y幅=${ySpan.toStringAsFixed(2)})。'
-        'もう一度撮影してください',
-      );
-    }
-    final layout = await _detectionService.detectFromBytes(
-      imageBytes: bytes,
-      filename: 'capture.png',
-      refWidth: imageSize.width,
-      refHeight: imageSize.height,
-      corners: corners.map((p) => OffsetLike(p[0], p[1])).toList(),
-    );
-    if (layout.balls.isEmpty) {
-      throw StateError('0 球 — 枠合わせを確認して再撮影してください');
-    }
-    PendingPhotoImportStore.set(layout);
-    if (!mounted) return;
-    await Navigator.of(context).pushNamedAndRemoveUntil(
-      '/layout',
-      (route) =>
-          route.settings.name == '/setup' ||
-          route.settings.name == '/' ||
-          route.isFirst,
-    );
-  }
-
-  Future<void> _captureAndDetect() async {
+  Future<void> _captureAndReview() async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized || _capturing) {
       return;
@@ -245,13 +192,11 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
         widgetSize: previewBox.size,
         imageSize: baked.size,
       );
-      await _detectFromBytes(
+      await _handoffToPhotoImport(
         bytes: baked.bytes,
         imageSize: baked.size,
         corners: corners,
       );
-    } on BallDetectionException catch (e) {
-      _showSnack(e.message);
     } catch (e) {
       _showSnack('$e');
     } finally {
@@ -259,7 +204,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
     }
   }
 
-  /// Mobile browser only — on desktop Web this opens a folder dialog.
+  /// Photo import でプレビュー＋4隅微調整してから検出する。
   Future<void> _handoffToPhotoImport({
     required Uint8List bytes,
     required Size imageSize,
@@ -271,7 +216,6 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
       cornersNormalized: corners,
     );
     if (!mounted) return;
-    _showSnack('API 未接続 — 写真から読込へ（4隅はガイド値を引き継ぎ）');
     await Navigator.of(context).pushReplacementNamed('/photo-import');
   }
 
@@ -293,13 +237,11 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
       if (picked == null) return;
       final raw = await picked.readAsBytes();
       final baked = await ImageBakeService.bake(raw);
-      await _detectFromBytes(
+      await _handoffToPhotoImport(
         bytes: baked.bytes,
         imageSize: baked.size,
-        corners: _guideCornersNormalizedLists(),
+        corners: TableGuideGeometry.defaultPhotoCornersAsLists(),
       );
-    } on BallDetectionException catch (e) {
-      _showSnack(e.message);
     } catch (e) {
       _showSnack('$e');
     } finally {
@@ -376,7 +318,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 FilledButton.icon(
-                  onPressed: _capturing ? null : _captureAndDetect,
+                  onPressed: _capturing ? null : _captureAndReview,
                   icon: _capturing
                       ? const SizedBox(
                           width: 20,
@@ -387,7 +329,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
                           ),
                         )
                       : const Icon(Icons.camera_alt),
-                  label: Text(_capturing ? '処理中…' : '撮影して検出'),
+                  label: Text(_capturing ? '処理中…' : '撮影して確認'),
                 ),
               ],
             ),
@@ -468,7 +410,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
             const Text(
               'Web でもカメラを使えます（App Store 不要）。\n'
               'HTTPS の URL から開き、カメラ許可を与えてください。\n'
-              '黄色枠に台を合わせて撮影します。',
+              '黄色枠に台を合わせて撮影 → 4隅を確認して検出します。',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white70, fontSize: 13),
             ),
@@ -573,7 +515,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
             ),
             Text(
               _serverOk
-                  ? '黄色枠にフェルト4隅が収まるよう合わせて撮影'
+                  ? '黄色枠に合わせて撮影 → 次画面で4隅を確認して検出'
                   : _serverStatus.summary,
               style: TextStyle(
                 color: _serverOk ? Colors.white : Colors.orange.shade200,
