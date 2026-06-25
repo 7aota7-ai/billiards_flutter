@@ -395,18 +395,18 @@ class TrajectoryGeometry {
     final objEndBasePx = objEndOverrideNorm == null
         ? objAutoEndPx
         : _toPx(objEndOverrideNorm, felt);
-    // 的球の進路上でポケット捕捉に入る最初の点を検出し、そこで的球ラインを打ち切る。
+    // 的球がポケットに入る場合のみポケット以降を省略（クッション反射は描画する）。
     final pocketHitPx =
         _firstPocketHitOnSegment(contactUsePx, objEndBasePx, felt);
-    final skipObjPost = pocketHitPx != null ||
-        isNearPocketPx(objEndBasePx, felt) ||
-        isNearPocketPx(objCenterPx, felt);
+    final skipObjPost = pocketHitPx != null;
     final objEndPx = pocketHitPx ?? objEndBasePx;
 
     final cueTravelLen = (cueEndPx - contactUsePx).distance;
-    final cueHitCushion = cueTravelLen >= cueToEdgeLen - 1.0;
-    final cueImpactPx = cueHitCushion ? cueAutoEndPx : cueEndPx;
-    final cueEdge = cueHitCushion ? _edgeAtPointPx(cueImpactPx, felt) : null;
+    final reachesCueCushion = cueTravelLen >= cueToEdgeLen - 1.0;
+    final cueImpactPx = reachesCueCushion ? cueAutoEndPx : cueEndPx;
+    final cueEdge =
+        reachesCueCushion ? _edgeAtPointPx(cueImpactPx, felt) : null;
+    final cueHitCushion = reachesCueCushion && cueEdge != null;
     final cueBounceDir =
         cueEdge == null ? Offset.zero : _reflect(cueDirUnit, cueEdge);
     final cueBounceLen =
@@ -415,7 +415,7 @@ class TrajectoryGeometry {
     final cueBounceEndPx = cueBounceEndOverrideNorm == null
         ? cueBounceAutoEndPx
         : _toPx(cueBounceEndOverrideNorm, felt);
-    final objEdge = _edgeAtPointPx(objEndPx, felt);
+    final objEdge = skipObjPost ? null : _edgeAtPointPx(objEndPx, felt);
     final objHitCushion = !skipObjPost && objEdge != null;
     final objBounceDir =
         objEdge == null ? Offset.zero : _reflect(objDirUnit, objEdge);
@@ -521,7 +521,7 @@ class TrajectoryGeometry {
   }
 
   static _Edge? _edgeAtPointPx(Offset pointPx, Rect felt) {
-    const threshold = 1.5;
+    final threshold = math.max(2.0, felt.width * 0.004);
     if ((pointPx.dx - felt.left).abs() <= threshold) return _Edge.left;
     if ((pointPx.dx - felt.right).abs() <= threshold) return _Edge.right;
     if ((pointPx.dy - felt.top).abs() <= threshold) return _Edge.top;
@@ -1749,25 +1749,25 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         final maxH = constraints.maxHeight;
         if (maxW <= 0 || maxH <= 0) return const SizedBox.shrink();
 
-        var tableW = maxW;
-        var tableH = tableW / aspectRatio;
-        if (tableH > maxH) {
-          tableH = maxH;
-          tableW = tableH * aspectRatio;
-        }
-
+        final tableW = maxW;
+        final tableH = tableW / aspectRatio;
         final lockPan = _trajEditMode;
-        return InteractiveViewer(
-          minScale: 1.0,
-          maxScale: 4.5,
-          constrained: false,
-          boundaryMargin: const EdgeInsets.all(16),
-          panEnabled: !lockPan,
-          scaleEnabled: true,
-          child: SizedBox(
-            width: tableW,
-            height: tableH,
-            child: _buildTableCanvas(Size(tableW, tableH)),
+        return SizedBox(
+          width: maxW,
+          height: maxH,
+          child: InteractiveViewer(
+            minScale: 1.0,
+            maxScale: 4.5,
+            constrained: false,
+            boundaryMargin: const EdgeInsets.all(24),
+            alignment: Alignment.topCenter,
+            panEnabled: !lockPan,
+            scaleEnabled: true,
+            child: SizedBox(
+              width: tableW,
+              height: tableH,
+              child: _buildTableCanvas(Size(tableW, tableH)),
+            ),
           ),
         );
       },
@@ -1889,6 +1889,54 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
+  Future<void> _openTagMemoSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetCtx) {
+        final bottom = MediaQuery.viewInsetsOf(sheetCtx).bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'タグ・メモ',
+                style: Theme.of(sheetCtx).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _tagCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'タグ',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _memoCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'メモ',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                maxLines: 4,
+                minLines: 2,
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => Navigator.of(sheetCtx).pop(),
+                child: const Text('完了'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildBottomControls(
     BuildContext context, {
     bool compactInputs = true,
@@ -1924,45 +1972,34 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             children: _balls.map((b) => _trayBall(b, radius: trayRadius)).toList(),
           ),
         ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(12, phoneLayout ? 4 : 8, 12, phoneLayout ? 6 : 12),
-          child: phoneLayout
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _tagCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'タグ',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 10,
-                          ),
-                        ),
+        if (phoneLayout)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: _openTagMemoSheet,
+                child: Text(
+                  _tagCtrl.text.isNotEmpty || _memoCtrl.text.isNotEmpty
+                      ? 'タグ・メモを編集'
+                      : 'タグ・メモを入力',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontSize: 13,
+                        color: AppleColors.appleBlue,
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: TextField(
-                        controller: _memoCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'メモ',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 10,
-                          ),
-                        ),
-                        maxLines: 1,
-                      ),
-                    ),
-                  ],
-                )
-              : compactInputs
+                ),
+              ),
+            ),
+          )
+        else
+          Padding(
+            padding: EdgeInsets.fromLTRB(12, phoneLayout ? 4 : 8, 12, phoneLayout ? 6 : 12),
+            child: compactInputs
               ? Column(
                   children: [
                     TextField(
