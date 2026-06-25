@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persisted base URL for the ball-detection API (Cloud Run or local uvicorn).
@@ -22,7 +23,17 @@ class DetectionApiSettings {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_key);
     if (saved == null || saved.trim().isEmpty) return defaultUrl;
-    return _normalize(saved.trim());
+    final normalized = _normalize(saved.trim());
+
+    // Migrate old local HTTP setting on HTTPS web to the new Cloud Run default.
+    final shouldForceDefaultOnHttpsWeb = kIsWeb &&
+        Uri.base.scheme == 'https' &&
+        normalized.startsWith('http://');
+    if (shouldForceDefaultOnHttpsWeb) {
+      await prefs.setString(_key, defaultUrl);
+      return defaultUrl;
+    }
+    return normalized;
   }
 
   static Future<void> saveBaseUrl(String url) async {
