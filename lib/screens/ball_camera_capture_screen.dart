@@ -13,11 +13,6 @@ import '../theme/apple_theme.dart';
 class BallCameraCaptureScreen extends StatefulWidget {
   const BallCameraCaptureScreen({super.key});
 
-  static bool get isSupported =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
-
   @override
   State<BallCameraCaptureScreen> createState() => _BallCameraCaptureScreenState();
 }
@@ -40,14 +35,6 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
   }
 
   Future<void> _init() async {
-    if (!BallCameraCaptureScreen.isSupported) {
-      setState(() {
-        _initializing = false;
-        _error = 'カメラは Android / iOS アプリで利用できます';
-      });
-      return;
-    }
-
     _serverOk = await _detectionService.isServerAvailable();
     try {
       _cameras = await availableCameras();
@@ -58,28 +45,74 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => _cameras.first,
       );
-      final controller = CameraController(
-        back,
-        ResolutionPreset.high,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
-      );
-      await controller.initialize();
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      setState(() {
-        _controller = controller;
-        _initializing = false;
-      });
+      await _openController(back, ResolutionPreset.high);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _initializing = false;
-        _error = 'カメラを起動できません: $e';
+        _error = _formatInitError(e);
       });
     }
+  }
+
+  String _formatInitError(Object e) {
+    final platform = kIsWeb
+        ? 'Web'
+        : defaultTargetPlatform.name;
+    if (kIsWeb) {
+      return 'Web ブラウザではカメラが使えないか、HTTPS が必要です。\n'
+          '($platform)\n\n'
+          'Android / iOS の Flutter アプリ (flutter run / 実機 APK) で '
+          '「配置を取る」を試してください。\n\n'
+          '詳細: $e';
+    }
+    return 'カメラを起動できません ($platform)。\n'
+        '設定でカメラ権限を確認してください。\n\n'
+        '詳細: $e';
+  }
+
+  Future<void> _openController(
+    CameraDescription camera,
+    ResolutionPreset preset,
+  ) async {
+    final controller = CameraController(
+      camera,
+      preset,
+      enableAudio: false,
+      imageFormatGroup: defaultTargetPlatform == TargetPlatform.android
+          ? ImageFormatGroup.jpeg
+          : null,
+    );
+    try {
+      await controller.initialize();
+    } on CameraException catch (_) {
+      await controller.dispose();
+      if (preset != ResolutionPreset.medium) {
+        await _openController(camera, ResolutionPreset.medium);
+        return;
+      }
+      rethrow;
+    }
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    setState(() {
+      _controller?.dispose();
+      _controller = controller;
+      _initializing = false;
+      _error = null;
+    });
+  }
+
+  Future<void> _retryInit() async {
+    setState(() {
+      _initializing = true;
+      _error = null;
+    });
+    await _controller?.dispose();
+    _controller = null;
+    await _init();
   }
 
   @override
@@ -190,9 +223,24 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_error!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
+              const Icon(Icons.videocam_off, color: Colors.white54, size: 48),
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              const SizedBox(height: 20),
               FilledButton(
+                onPressed: _retryInit,
+                child: const Text('再試行'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white54),
+                ),
                 onPressed: () => Navigator.of(context).pushReplacementNamed(
                   '/photo-import',
                 ),
@@ -253,7 +301,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 FilledButton.icon(
-                  onPressed: (_capturing || !_serverOk) ? null : _captureAndDetect,
+                  onPressed: _capturing ? null : _captureAndDetect,
                   icon: _capturing
                       ? const SizedBox(
                           width: 20,
