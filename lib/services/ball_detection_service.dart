@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/detected_ball_layout.dart';
+import 'detection_api_settings.dart';
 
 /// Result of probing the local detection API.
 class BallDetectionServerStatus {
@@ -19,36 +20,38 @@ class BallDetectionServerStatus {
   final String? detail;
 }
 
-/// Calls the local OpenCV FastAPI server or parses pasted JSON.
+/// Calls the OpenCV FastAPI server (Cloud Run or local) or parses pasted JSON.
 class BallDetectionService {
-  BallDetectionService({this.baseUrl = 'http://127.0.0.1:8765'});
+  BallDetectionService({this.baseUrl = DetectionApiSettings.defaultUrl});
 
   final String baseUrl;
 
-  /// GitHub Pages (HTTPS) cannot call the local HTTP API — browser blocks it.
-  static bool get isBlockedByHttpsWeb =>
-      kIsWeb && Uri.base.scheme == 'https';
+  static bool _isHttps(String url) => url.startsWith('https://');
 
-  static String get httpsWebBlockedDetail =>
-      'GitHub Pages（HTTPS）からは PC の HTTP API に接続できません。\n\n'
-      'スマホで撮影→検出まで行う手順:\n'
+  /// HTTPS の Web から HTTP のローカル API だけブロック（mixed content）。
+  bool get isBlockedByMixedContent =>
+      kIsWeb && Uri.base.scheme == 'https' && !_isHttps(baseUrl);
+
+  static String get mixedContentBlockedDetail =>
+      'GitHub Pages（HTTPS）からは HTTP のローカル API に接続できません。\n\n'
+      '本番: Cloud Run（HTTPS）を使うか、ローカル開発は次の手順:\n'
       '1. PC で uvicorn --host 0.0.0.0 --port 8765\n'
       '2. PC で flutter run -d chrome --web-hostname 0.0.0.0 --web-port 8080\n'
-      '3. スマホで http://PCのIP:8080 を開く（HTTPS の GitHub Pages では不可）\n'
-      '4. 下の API URL を http://PCのIP:8765 に設定';
+      '3. スマホで http://PCのIP:8080 を開く\n'
+      '4. API URL を http://PCのIP:8765 に設定';
 
   Future<BallDetectionServerStatus> checkServer() async {
-    if (isBlockedByHttpsWeb) {
+    if (isBlockedByMixedContent) {
       return BallDetectionServerStatus(
         available: false,
-        summary: '検出 API: HTTPS の Web からは接続不可',
-        detail: httpsWebBlockedDetail,
+        summary: '検出 API: HTTPS ページから HTTP API は不可',
+        detail: mixedContentBlockedDetail,
       );
     }
     try {
       final res = await http
           .get(Uri.parse('$baseUrl/health'))
-          .timeout(const Duration(seconds: 2));
+          .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         return BallDetectionServerStatus(
           available: true,

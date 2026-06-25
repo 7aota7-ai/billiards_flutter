@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Quick POST test for /detect."""
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -9,6 +10,11 @@ from pathlib import Path
 def main() -> int:
     image_path = Path(sys.argv[1] if len(sys.argv) > 1 else "samples/user_blue_table2.png")
     corners_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
+    base_url = (
+        sys.argv[3]
+        if len(sys.argv) > 3
+        else os.environ.get("DETECT_API_URL", "http://127.0.0.1:8765")
+    ).rstrip("/")
     if corners_path:
         corners = json.loads(corners_path.read_text(encoding="utf-8"))
     else:
@@ -48,7 +54,7 @@ def main() -> int:
     body.extend(f"--{boundary}--\r\n".encode())
 
     req = urllib.request.Request(
-        "http://127.0.0.1:8765/detect",
+        f"{base_url}/detect",
         data=bytes(body),
         method="POST",
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},

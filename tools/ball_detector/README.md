@@ -25,11 +25,13 @@ pip install -r requirements.txt
 - **App Store 登録は必須ではありません。** 今まで通り GitHub Pages の URL から開いても、スマホブラウザでカメラが使えます。
 - Web では最初に **「カメラプレビューを起動」** をタップ（ブラウザのユーザー操作が必要）。
 - プレビューが動かない場合は **「ブラウザカメラで撮影」**（OS 標準カメラ UI）を試してください。
-- **球検出 API** は PC 上で動作。スマホから使う手順は下記「スマホで撮影→検出」。
+- **球検出 API** … 本番は Cloud Run（HTTPS）。ローカルは PC 上の uvicorn。
 
-### スマホで撮影 → 検出（同一 Wi-Fi）
+### スマホで撮影 → 検出
 
-GitHub Pages（HTTPS）からは HTTP API に届きません。**http://PCのIP:ポート** でアプリを開いてください。
+**本番（推奨）:** GitHub Pages の URL から開くだけ。Cloud Run API に HTTPS で接続します（下記「Cloud Run 本番デプロイ」参照）。
+
+**ローカル開発（同一 Wi-Fi）:** GitHub Pages（HTTPS）からは HTTP API に届きません。**http://PCのIP:ポート** でアプリを開いてください。
 
 1. PC: `uvicorn server:app --host 0.0.0.0 --port 8765`
 2. PC: `flutter run -d chrome --web-hostname 0.0.0.0 --web-port 8080`
@@ -52,9 +54,10 @@ cd tools/ball_detector
 
 | 開き方 | API に繋がる？ |
 |--------|----------------|
-| **GitHub Pages（HTTPS）** | ❌ ブラウザが HTTP の localhost をブロック |
-| **PC で `flutter run -d chrome`（HTTP）** | ✅ |
-| **スマホ Web** | ❌（127.0.0.1 はスマホ自身） |
+| **GitHub Pages（HTTPS）+ Cloud Run** | ✅ HTTPS → HTTPS |
+| **GitHub Pages + ローカル HTTP API** | ❌ mixed content |
+| **PC で `flutter run -d chrome`（HTTP）+ ローカル API** | ✅ |
+| **スマホ Web + ローカル API** | ❌（127.0.0.1 はスマホ自身） |
 
 **ステップ 1（PC で撮影→検出）の正しい手順:**
 
@@ -62,7 +65,7 @@ cd tools/ball_detector
 2. ターミナル B: プロジェクト直下で `flutter run -d chrome`
 3. 開いた **http://localhost** のアプリで「撮影して検出」
 
-GitHub Pages の URL のままでは API 接続 OK にはなりません（JSON 貼り付けは可）。
+GitHub Pages では **Cloud Run（HTTPS）** がデフォルトです。ローカル uvicorn のみの場合は `flutter run`（HTTP）を使ってください。
 
 ### ガイド寸法
 
@@ -175,7 +178,7 @@ uvicorn server:app --reload --host 0.0.0.0 --port 8765
 - GitHub Pages の URL から開いても、スマホブラウザでカメラが使えます（HTTPS + カメラ許可）。
 - Web では **「カメラプレビューを起動」** をタップしてから撮影（ブラウザの仕様）。
 - プレビュー不可の場合は **「ブラウザカメラで撮影」** を試してください。
-- 球検出 API は PC 上の `127.0.0.1:8765` のため、スマホ単体では届きません（同一 Wi‑Fi + PC IP が別途必要）。
+- 球検出 API は **Cloud Run（HTTPS）** がデフォルト。ローカルは `--dart-define=DETECTION_API_URL=http://127.0.0.1:8765`。
 
 ### 写真から読込
 
@@ -183,4 +186,287 @@ uvicorn server:app --reload --host 0.0.0.0 --port 8765
 2. 写真選択 → 4点タップ → 検出（ローカル API または JSON 貼り付け）
 3. プレビュー確認 → エディタへ反映（id 未確定の球は色ヒント付きで配置）
 
-デフォルト API: `http://127.0.0.1:8765`
+デフォルト API: Cloud Run 本番（`lib/services/detection_api_settings.dart` の `cloudRunUrl`）。  
+ローカル開発は `http://127.0.0.1:8765` または `--dart-define=DETECTION_API_URL=...`。
+
+---
+
+## Cloud Run 本番デプロイ（無料枠前提）
+
+球検出 API を HTTPS で公開し、GitHub Pages（`https://7aota7-ai.github.io/billiards_flutter/`）から直接呼べます。  
+**画像は保存せず JSON のみ返却**（メモリ上でデコード→検出→破棄）。
+
+### 無料枠の目安（2025 時点・要 [公式料金表](https://cloud.google.com/run/pricing) 確認）
+
+| サービス | 無料枠の目安 |
+|----------|----------------|
+| Cloud Run | 月 200 万リクエスト、一定の vCPU/メモリ秒 |
+| Artifact Registry | 0.5 GB ストレージ |
+| 課金アカウント | **有効化必須**（無料枠内なら実質 0 円のことが多い） |
+
+個人利用・低トラフィックなら無料枠内に収まりやすい構成です。
+
+### 変数（コマンド内で使う）
+
+PowerShell / bash どちらでも、まずプロジェクト固有の値を設定してください。
+
+```bash
+# プロジェクト ID（英小文字・数字・ハイフン。例: billiards-detector-123）
+export PROJECT_ID="YOUR_PROJECT_ID"
+
+# リージョン（東京。無料枠はリージョン共通だがレイテンシ用）
+export REGION="asia-northeast1"
+
+# サービス名（URL の一部になる）
+export SERVICE="billiards-ball-detector"
+
+# Artifact Registry リポジトリ名
+export REPO="ball-detector"
+
+# GitHub Pages のオリジン（CORS 用。パスは含めない）
+export CORS_ORIGIN="https://7aota7-ai.github.io"
+```
+
+Windows PowerShell の場合:
+
+```powershell
+$PROJECT_ID = "YOUR_PROJECT_ID"
+$REGION = "asia-northeast1"
+$SERVICE = "billiards-ball-detector"
+$REPO = "ball-detector"
+$CORS_ORIGIN = "https://7aota7-ai.github.io"
+```
+
+---
+
+### ステップ 1: gcloud CLI のインストール
+
+→ Google Cloud SDK を入れ、`gcloud` が使える状態にする。
+
+- https://cloud.google.com/sdk/docs/install
+
+```bash
+gcloud version
+```
+
+---
+
+### ステップ 2: GCP プロジェクト作成
+
+→ 課金・API 有効化の単位になるプロジェクトを新規作成する。
+
+```bash
+gcloud projects create $PROJECT_ID --name="Billiards Ball Detector"
+gcloud config set project $PROJECT_ID
+```
+
+既存プロジェクトを使う場合は `create` を飛ばし、`gcloud config set project` だけ実行。
+
+---
+
+### ステップ 3: 課金アカウントの紐付け
+
+→ 無料枠を使うにも課金アカウントのリンクが必要（枠内は課金されないことが多い）。
+
+コンソール: https://console.cloud.google.com/billing  
+または:
+
+```bash
+# 利用可能な課金アカウント ID を確認
+gcloud billing accounts list
+
+# プロジェクトに紐付け（BILLING_ACCOUNT_ID を置換）
+gcloud billing projects link $PROJECT_ID --billing-account=BILLING_ACCOUNT_ID
+```
+
+---
+
+### ステップ 4: 必要 API の有効化
+
+→ Cloud Run・コンテナビルド・Artifact Registry を使えるようにする。
+
+```bash
+gcloud services enable \
+  run.googleapis.com \
+  artifactregistry.googleapis.com \
+  cloudbuild.googleapis.com
+```
+
+---
+
+### ステップ 5: Artifact Registry リポジトリ作成
+
+→ Docker イメージを置くプライベートレジストリを用意する。
+
+```bash
+gcloud artifacts repositories create $REPO \
+  --repository-format=docker \
+  --location=$REGION \
+  --description="Billiards ball detector API"
+```
+
+---
+
+### ステップ 6: Docker 認証（初回のみ）
+
+→ ローカル / Cloud Build から Artifact Registry へ push できるようにする。
+
+```bash
+gcloud auth configure-docker ${REGION}-docker.pkg.dev
+```
+
+---
+
+### ステップ 7: イメージのビルド & push
+
+→ `tools/ball_detector` から OpenCV + FastAPI イメージをビルドしてレジストリへ送る。
+
+```bash
+cd tools/ball_detector
+
+export IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${SERVICE}:latest"
+
+docker build -t $IMAGE .
+docker push $IMAGE
+```
+
+（Cloud Build を使う場合）
+
+```bash
+gcloud builds submit --tag $IMAGE tools/ball_detector
+```
+
+---
+
+### ステップ 8: Cloud Run へデプロイ
+
+→ コンテナをサーバーレスで公開。環境変数で CORS・サイズ上限を設定する。
+
+```bash
+gcloud run deploy $SERVICE \
+  --image=$IMAGE \
+  --region=$REGION \
+  --platform=managed \
+  --allow-unauthenticated \
+  --memory=512Mi \
+  --cpu=1 \
+  --timeout=60s \
+  --max-instances=2 \
+  --set-env-vars="CORS_ORIGINS=${CORS_ORIGIN},MAX_UPLOAD_BYTES=10485760,RATE_LIMIT_REQUESTS=30,RATE_LIMIT_WINDOW_SEC=60,LOG_DETECT_RESULTS=false"
+```
+
+| 環境変数 | 意味 |
+|----------|------|
+| `CORS_ORIGINS` | 許可オリジン（カンマ区切り）。本番は GitHub Pages のみ推奨 |
+| `MAX_UPLOAD_BYTES` | 画像上限（既定 10MB） |
+| `RATE_LIMIT_REQUESTS` | IP あたりの上限（インスタンス内・初期案 30/分） |
+| `LOG_DETECT_RESULTS` | `false` = 検出 JSON をログに出さない |
+
+デプロイ完了後、**サービス URL を控える**:
+
+```bash
+gcloud run services describe $SERVICE \
+  --region=$REGION \
+  --format='value(status.url)'
+```
+
+例: `https://billiards-ball-detector-xxxxx-an.a.run.app`
+
+---
+
+### ステップ 9: 動作確認
+
+→ `/health` と `/detect` が動くか確認する。
+
+**ヘルスチェック**
+
+```bash
+export API_URL=$(gcloud run services describe $SERVICE --region=$REGION --format='value(status.url)')
+
+curl -s "$API_URL/health"
+# => {"status":"ok","version":"0.1.4"}
+```
+
+**検出 API（サンプル画像）**
+
+```bash
+cd tools/ball_detector
+DETECT_API_URL="$API_URL" python test_api.py samples/user_blue_table2.png
+```
+
+`ball_count=...` が表示されれば OK。
+
+---
+
+### ステップ 10: Flutter の baseUrl を本番 URL に差し替え
+
+→ アプリが Cloud Run をデフォルトで叩くようにする。
+
+`lib/services/detection_api_settings.dart` の `cloudRunUrl` をステップ 9 の URL に更新:
+
+```dart
+static const cloudRunUrl =
+    'https://billiards-ball-detector-xxxxx-an.a.run.app';  // 実際の URL
+```
+
+GitHub Pages へ再デプロイ（`main` push で workflow が走る）。
+
+**ローカル開発だけ HTTP API を使う場合:**
+
+```bash
+flutter run -d chrome --dart-define=DETECTION_API_URL=http://127.0.0.1:8765
+```
+
+---
+
+### セキュリティ（最低限）
+
+| 項目 | 実装 |
+|------|------|
+| 画像保存 | **しない**（メモリ処理のみ） |
+| レスポンス | JSON のみ（座標・色ヒント） |
+| CORS | GitHub Pages オリジンに制限（`CORS_ORIGINS`） |
+| サイズ上限 | 10MB 超は HTTP 413 |
+| ログ | ファイル書き込み廃止。Cloud Logging には `upload_bytes`・`ball_count`・処理時間のみ |
+| レート制限 | インスタンス内 30 req/分/IP（`RateLimitMiddleware`）。スケールアウト時はインスタンスごとにカウントされるため、本格運用は [Cloud Armor](https://cloud.google.com/armor) や API ゲートウェイを検討 |
+| 認証 | 現状は `--allow-unauthenticated`（公開 API）。悪用が気になる場合は IAP / API キー追加を検討 |
+
+**ログの見方**
+
+```bash
+gcloud run services logs read $SERVICE --region=$REGION --limit=20
+```
+
+画像バイナリや全 JSON はログに出しません。
+
+---
+
+### 運用: コード更新の再デプロイ
+
+→ 検出ロジック変更後、イメージを再ビルドして Cloud Run を更新する。
+
+```bash
+cd tools/ball_detector
+export IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${SERVICE}:latest"
+
+docker build -t $IMAGE .
+docker push $IMAGE
+
+gcloud run deploy $SERVICE --image=$IMAGE --region=$REGION
+```
+
+---
+
+### トラブルシュート
+
+| 症状 | 対処 |
+|------|------|
+| GitHub Pages から CORS エラー | `CORS_ORIGINS` に `https://7aota7-ai.github.io` が入っているか確認（末尾スラッシュなし） |
+| 413 | 画像を圧縮するか `MAX_UPLOAD_BYTES` を一時的に引き上げ |
+| 429 | レート制限。しばらく待つか `RATE_LIMIT_*` を調整 |
+| コールドスタート遅延 | 初回 `/health` が 5〜10 秒かかることがある（Flutter は 10 秒タイムアウト） |
+| 無料枠超過の心配 | Cloud Console → 請求 → 予算アラートを設定 |
+
+---
+
+## ローカル開発（従来どおり）

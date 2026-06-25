@@ -1,10 +1,21 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Persisted base URL for the local ball-detection API.
+/// Persisted base URL for the ball-detection API (Cloud Run or local uvicorn).
 class DetectionApiSettings {
   DetectionApiSettings._();
 
-  static const defaultUrl = 'http://127.0.0.1:8765';
+  /// Cloud Run 本番 URL。デプロイ後 `gcloud run services describe` の URL に差し替え。
+  static const cloudRunUrl =
+      'https://billiards-ball-detector-frxlawrwwa-an.a.run.app';
+
+  /// ローカル開発用。`flutter run --dart-define=DETECTION_API_URL=http://127.0.0.1:8765`
+  static const localUrl = 'http://127.0.0.1:8765';
+
+  static const defaultUrl = String.fromEnvironment(
+    'DETECTION_API_URL',
+    defaultValue: cloudRunUrl,
+  );
+
   static const _key = 'ball_detection_api_base_url';
 
   static Future<String> loadBaseUrl() async {
