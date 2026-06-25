@@ -1,32 +1,71 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 
-/// Bake EXIF orientation into PNG bytes so display == OpenCV decode.
+/// Bake EXIF orientation, resize, and JPEG-compress for API upload.
 class ImageBakeService {
   ImageBakeService._();
 
+  /// Cloud Run default limit is 10MB; keep margin for multipart overhead.
+  static const int maxUploadBytes = 9 * 1024 * 1024;
+
+  /// Long edge cap — enough for ball detection, keeps PNG-style bloat away.
+  static const int maxLongEdgePx = 2048;
+
   static Future<({Uint8List bytes, Size size})> bake(Uint8List raw) async {
-    final codec = await ui.instantiateImageCodec(raw);
-    final frame = await codec.getNextFrame();
-    final img = frame.image;
-    final w = img.width;
-    final h = img.height;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    canvas.drawImage(img, Offset.zero, Paint());
-    final picture = recorder.endRecording();
-    final baked = await picture.toImage(w, h);
-    final data = await baked.toByteData(format: ui.ImageByteFormat.png);
-    img.dispose();
-    baked.dispose();
-    if (data == null) {
-      throw StateError('画像の正規化に失敗しました');
+    final decoded = img.decodeImage(raw);
+    if (decoded == null) {
+      throw StateError('画像を読み込めませんでした');
     }
+
+    var working = img.bakeOrientation(decoded);
+    working = _resizeIfNeeded(working);
+    final bytes = _encodeJpegUnderLimit(working);
+
     return (
-      bytes: data.buffer.asUint8List(),
-      size: Size(w.toDouble(), h.toDouble()),
+      bytes: bytes,
+      size: Size(working.width.toDouble(), working.height.toDouble()),
     );
+  }
+
+  static img.Image _resizeIfNeeded(img.Image image) {
+    final w = image.width;
+    final h = image.height;
+    final longEdge = w > h ? w : h;
+    if (longEdge <= maxLongEdgePx) return image;
+
+    if (w >= h) {
+      return img.copyResize(image, width: maxLongEdgePx);
+    }
+    return img.copyResize(image, height: maxLongEdgePx);
+  }
+
+  static Uint8List _encodeJpegUnderLimit(img.Image image) {
+    var quality = 88;
+    var bytes = Uint8List.fromList(img.encodeJpg(image, quality: quality));
+    while (bytes.length > maxUploadBytes && quality > 55) {
+      quality -= 8;
+      bytes = Uint8List.fromList(img.encodeJpg(image, quality: quality));
+    }
+
+    if (bytes.length <= maxUploadBytes) return bytes;
+
+    var scaled = image;
+    while (bytes.length > maxUploadBytes && scaled.width > 800) {
+      scaled = img.copyResize(
+        scaled,
+        width: (scaled.width * 0.85).round(),
+      );
+      quality = 82;
+      bytes = Uint8List.fromList(img.encodeJpg(scaled, quality: quality));
+    }
+
+    if (bytes.length > maxUploadBytes) {
+      throw StateError(
+        '画像を圧縮しても上限（${maxUploadBytes ~/ (1024 * 1024)}MB）を超えます',
+      );
+    }
+    return bytes;
   }
 }

@@ -104,6 +104,11 @@ class BallDetectionService {
 
     final streamed = await request.send().timeout(const Duration(seconds: 60));
     final body = await streamed.stream.bytesToString();
+    if (streamed.statusCode == 413) {
+      throw BallDetectionException(
+        '画像が大きすぎます（API上限 10MB）。別の写真を選ぶか、アプリを再読み込みしてください。',
+      );
+    }
     if (streamed.statusCode != 200) {
       throw BallDetectionException(
         '検出 API エラー (${streamed.statusCode}): $body',

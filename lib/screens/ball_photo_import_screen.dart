@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -8,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import '../models/detected_ball_layout.dart';
 import '../services/ball_detection_service.dart';
 import '../services/detection_api_settings.dart';
+import '../services/image_bake_service.dart';
 import '../services/pending_capture_store.dart';
 import '../services/pending_photo_import_store.dart';
 import '../services/picked_file_reader.dart';
@@ -162,17 +162,18 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
         throw StateError('画像データを読み込めませんでした');
       }
 
-      final bakedBytes = await _bakeImageBytes(rawBytes);
-      await _decodeImageSize(bakedBytes);
+      final baked = await ImageBakeService.bake(rawBytes);
       if (!mounted) return;
       setState(() {
-        _imageBytes = bakedBytes;
-        _filename = picked.name.endsWith('.png')
-            ? picked.name
-            : '${picked.name.replaceAll(RegExp(r'\.[^.]+$'), '')}.png';
+        _imageBytes = baked.bytes;
+        _imageSize = baked.size;
+        _filename =
+            '${picked.name.replaceAll(RegExp(r'\.[^.]+$'), '')}.jpg';
         _corners.clear();
         _result = null;
-        _status = '4隅を順番にタップしてください（左上→右上→右下→左下）';
+        _status =
+            '4隅を順番にタップ（${baked.size.width.toInt()}×${baked.size.height.toInt()}、'
+            '${(baked.bytes.length / 1024).round()}KB）';
       });
     } catch (e) {
       if (!mounted) return;
@@ -182,37 +183,6 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
     } finally {
       if (mounted) setState(() => _picking = false);
     }
-  }
-
-  /// Bake EXIF orientation into pixels so Flutter display == OpenCV decode.
-  Future<Uint8List> _bakeImageBytes(Uint8List raw) async {
-    final codec = await ui.instantiateImageCodec(raw);
-    final frame = await codec.getNextFrame();
-    final img = frame.image;
-    final w = img.width;
-    final h = img.height;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    canvas.drawImage(img, Offset.zero, Paint());
-    final picture = recorder.endRecording();
-    final baked = await picture.toImage(w, h);
-    final data = await baked.toByteData(format: ui.ImageByteFormat.png);
-    img.dispose();
-    baked.dispose();
-    if (data == null) {
-      throw StateError('画像の正規化に失敗しました');
-    }
-    return data.buffer.asUint8List();
-  }
-
-  Future<void> _decodeImageSize(Uint8List bytes) async {
-    final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    _imageSize = Size(
-      frame.image.width.toDouble(),
-      frame.image.height.toDouble(),
-    );
-    frame.image.dispose();
   }
 
   /// Fit image to [boxWidth]; height follows aspect ratio (scrollable if tall).
