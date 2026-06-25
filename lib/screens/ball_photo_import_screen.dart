@@ -12,7 +12,6 @@ import '../services/pending_capture_store.dart';
 import '../services/pending_photo_import_store.dart';
 import '../services/picked_file_reader.dart';
 import '../theme/apple_theme.dart';
-import '../utils/web_platform.dart';
 
 /// Semi-automatic photo import: pick image, tap 4 felt corners, detect balls.
 class BallPhotoImportScreen extends StatefulWidget {
@@ -41,7 +40,6 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
   BallDetectionService _service =
       BallDetectionService(baseUrl: DetectionApiSettings.defaultUrl);
   final _jsonCtrl = TextEditingController();
-  final _apiUrlCtrl = TextEditingController();
 
   Uint8List? _imageBytes;
   String? _filename;
@@ -69,7 +67,6 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
   @override
   void dispose() {
     _jsonCtrl.dispose();
-    _apiUrlCtrl.dispose();
     super.dispose();
   }
 
@@ -78,7 +75,6 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
     if (!mounted) return;
     setState(() {
       _service = BallDetectionService(baseUrl: url);
-      _apiUrlCtrl.text = url;
     });
     await _checkServer();
   }
@@ -90,20 +86,6 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
       _serverStatus = status;
       _serverOk = status.available;
     });
-  }
-
-  Future<void> _saveApiUrl() async {
-    final url = _apiUrlCtrl.text.trim();
-    if (url.isEmpty) return;
-    await DetectionApiSettings.saveBaseUrl(url);
-    final normalized = await DetectionApiSettings.loadBaseUrl();
-    if (!mounted) return;
-    setState(() {
-      _service = BallDetectionService(baseUrl: normalized);
-      _apiUrlCtrl.text = normalized;
-    });
-    await _checkServer();
-    _showSnack(_serverOk ? 'API 接続 OK' : 'API 未接続');
   }
 
   void _loadPendingCapture() {
@@ -647,34 +629,6 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
               padding: const EdgeInsets.only(top: 4),
               child: Text(_status!, style: const TextStyle(fontSize: 13)),
             ),
-          if (isMobileWeb) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _apiUrlCtrl,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      labelText: '検出 API URL',
-                      hintText: 'http://192.168.0.10:8765',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
-                      ),
-                    ),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                FilledButton(
-                  onPressed: _saveApiUrl,
-                  child: const Text('接続'),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );

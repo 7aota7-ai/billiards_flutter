@@ -28,7 +28,6 @@ class BallCameraCaptureScreen extends StatefulWidget {
 class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
   BallDetectionService _detectionService =
       BallDetectionService(baseUrl: DetectionApiSettings.defaultUrl);
-  final _apiUrlCtrl = TextEditingController();
   final _previewKey = GlobalKey();
   final _imagePicker = ImagePicker();
 
@@ -59,25 +58,9 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
     if (!mounted) return;
     setState(() {
       _detectionService = BallDetectionService(baseUrl: url);
-      _apiUrlCtrl.text = url;
     });
     if (kIsWeb) {
       await _refreshServerStatus();
-    }
-  }
-
-  Future<void> _saveApiUrl() async {
-    final url = _apiUrlCtrl.text.trim();
-    if (url.isEmpty) return;
-    await DetectionApiSettings.saveBaseUrl(url);
-    final normalized = await DetectionApiSettings.loadBaseUrl();
-    if (!mounted) return;
-    setState(() {
-      _detectionService = BallDetectionService(baseUrl: normalized);
-    });
-    await _refreshServerStatus();
-    if (mounted) {
-      _showSnack(_serverOk ? 'API 接続 OK' : 'API 未接続 — URL を確認');
     }
   }
 
@@ -330,7 +313,6 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
 
   @override
   void dispose() {
-    _apiUrlCtrl.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -505,8 +487,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
                 style: TextStyle(color: Colors.orange.shade200, fontSize: 12),
               ),
             ],
-            _buildApiUrlSection(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: _startCameraFromUserGesture,
               icon: const Icon(Icons.videocam),
@@ -611,59 +592,8 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
                   ),
                 ),
               ),
-            if (isMobileWeb) _buildApiUrlSection(compact: true),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildApiUrlSection({bool compact = false}) {
-    if (!isMobileWeb) return const SizedBox.shrink();
-    return Padding(
-      padding: EdgeInsets.only(top: compact ? 6 : 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '検出 API URL（PC の IP:8765）',
-            style: TextStyle(
-              color: compact ? Colors.white70 : Colors.orange.shade200,
-              fontSize: 11,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _apiUrlCtrl,
-                  style: TextStyle(
-                    color: compact ? Colors.white : Colors.white,
-                    fontSize: 13,
-                  ),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: 'http://192.168.0.10:8765',
-                    hintStyle: TextStyle(color: Colors.white38),
-                    filled: true,
-                    fillColor: const Color(0x33FFFFFF),
-                    border: const OutlineInputBorder(),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              TextButton(
-                onPressed: _saveApiUrl,
-                child: const Text('接続', style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
