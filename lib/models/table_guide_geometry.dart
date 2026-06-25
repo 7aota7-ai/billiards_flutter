@@ -25,9 +25,12 @@ class TableGuideGeometry {
   static const farNearWidthRatio = 0.35;
 
   /// Normalized preview positions for TL → TR → BR → BL.
-  static const farYNorm = 0.30;
-  static const nearYNorm = 0.68;
-  static const nearHalfWidthNorm = 0.42;
+  ///
+  /// Wider/taller than a distant shot: without zoom-out, the near pockets sit
+  /// at the frame edge when standing at the seat (5–60 cm behind the cushion).
+  static const farYNorm = 0.27;
+  static const nearYNorm = 0.76;
+  static const nearHalfWidthNorm = 0.48;
 
   static List<Offset> guideCornersNormalized() {
     const farHalf = nearHalfWidthNorm * farNearWidthRatio;
@@ -43,10 +46,10 @@ class TableGuideGeometry {
   /// Portrait table photo — initial felt corners (photo import / browser camera).
   /// Same trapezoid as [guideCornersNormalized] for a typical portrait frame.
   static const defaultPhotoCorners = <Offset>[
-    Offset(0.353, 0.30),
-    Offset(0.647, 0.30),
-    Offset(0.92, 0.68),
-    Offset(0.08, 0.68),
+    Offset(0.332, 0.27),
+    Offset(0.668, 0.27),
+    Offset(0.98, 0.76),
+    Offset(0.02, 0.76),
   ];
 
   static List<List<double>> defaultPhotoCornersAsLists() =>
