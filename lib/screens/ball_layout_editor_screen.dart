@@ -1188,12 +1188,13 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
   void _setPhoneAxisStatus() {
     if (_spAxisBallId != null) {
-      _status = '縦線で上下・横線で左右にドラッグして位置を調整';
+      _status = '縦線をドラッグで左右・横線をドラッグで上下に位置を調整';
     }
   }
 
-  String get _trajEditStatus =>
-      '軌道点編集: 赤=接触点 / 緑=手球曲率 / 黄=的球曲率 / 白・黄丸=終点をドラッグ';
+  String get _trajEditStatus => _isPhone
+      ? '軌道点編集: ピンチで拡大 → 点をドラッグ（赤=接触 / 緑=手球 / 黄=的球）'
+      : '軌道点編集: 赤=接触点 / 緑=手球曲率 / 黄=的球曲率 / 白・黄丸=終点をドラッグ';
 
   bool _isNearBallCenter(Offset p, BallInstance b, double thresholdPx) {
     final c = Offset(
@@ -1475,9 +1476,12 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     _dragObjBounceEndIdx = null;
     final felt = _felt;
     final br = _ballRadiusPx();
-    final hitContact = _isPhone ? 32.0 : 14.0;
-    final hitAnchor = _isPhone ? 36.0 : 16.0;
-    final hitEnd = _isPhone ? 32.0 : 14.0;
+    final phoneTrajEdit = _isPhone && _trajEditMode;
+    final hitContact =
+        phoneTrajEdit ? 46.0 : (_isPhone ? 32.0 : 14.0);
+    final hitAnchor =
+        phoneTrajEdit ? 50.0 : (_isPhone ? 36.0 : 16.0);
+    final hitEnd = phoneTrajEdit ? 46.0 : (_isPhone ? 32.0 : 14.0);
     for (var i = 0; i < _lines.length; i++) {
       final line = _lines[i];
       final cue = _balls.firstWhere((e) => e.def.id == line.cueBallId);
@@ -1669,24 +1673,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  // 横表示時は編集優先で常に十分なサイズを確保し、必要ならパンで追従。
-                  final tableWidth = math.max(constraints.maxWidth, 860.0);
-                  final tableHeight = tableWidth / 2;
-                  return InteractiveViewer(
-                    minScale: 0.85,
-                    maxScale: 2.5,
-                    constrained: false,
-                    boundaryMargin: const EdgeInsets.all(24),
-                    child: SizedBox(
-                      width: tableWidth,
-                      height: tableHeight,
-                      child: _buildTableCanvas(Size(tableWidth, tableHeight)),
-                    ),
-                  );
-                },
-              ),
+              child: _buildPhoneZoomableTable(aspectRatio: 2.0),
             ),
           ),
           _buildBottomControls(context, compactInputs: true),
@@ -1712,37 +1699,47 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   }
 
   Widget _buildPortraitLayout(BuildContext context) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          const SizedBox(height: 8),
-          _buildTopControls(dense: true),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(0, 4, 0, 6),
-            child: _buildTableWithFixedHeight(
-              aspectRatio: 1 / (2 / 1),
-              targetHeight: 600,
-            ),
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        _buildTopControls(dense: true),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+            child: _buildPhoneZoomableTable(aspectRatio: 0.5),
           ),
-          _buildBottomControls(context, compactInputs: true),
-        ],
-      ),
+        ),
+        _buildBottomControls(context, compactInputs: true),
+      ],
     );
   }
 
-  Widget _buildTableWithFixedHeight({
-    required double aspectRatio,
-    required double targetHeight,
-  }) {
+  /// SP: ピンチズーム・パン対応。軌道点編集時は1本指を点操作に使うためパンを無効化。
+  Widget _buildPhoneZoomableTable({required double aspectRatio}) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final height = targetHeight;
-        final width = height * aspectRatio;
-        return SizedBox(
-          width: width,
-          height: height,
-          child: Center(
-            child: _buildTableCanvas(Size(width, height)),
+        final widthIsLong = aspectRatio >= 1.0;
+        late final double tableW;
+        late final double tableH;
+        if (widthIsLong) {
+          tableW = math.max(constraints.maxWidth * 1.15, 720.0);
+          tableH = tableW / aspectRatio;
+        } else {
+          tableH = math.max(constraints.maxHeight * 1.2, 640.0);
+          tableW = tableH * aspectRatio;
+        }
+        final lockPan = _trajEditMode;
+        return InteractiveViewer(
+          minScale: 0.9,
+          maxScale: 4.5,
+          constrained: false,
+          boundaryMargin: const EdgeInsets.all(40),
+          panEnabled: !lockPan,
+          scaleEnabled: true,
+          child: SizedBox(
+            width: tableW,
+            height: tableH,
+            child: _buildTableCanvas(Size(tableW, tableH)),
           ),
         );
       },
@@ -2082,43 +2079,12 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
     return Stack(
       children: [
-        // 縦線 = Y（上下移動）
+        // 縦線をドラッグ → 左右（X）
         Positioned(
           left: cx - (guideHit / 2),
           top: felt.top,
           width: guideHit,
           height: felt.height,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onPanStart: (_) => setState(() => _dragAxisY = true),
-            onPanUpdate: (d) {
-              final nextY = (b.y + (d.delta.dy / felt.height)).clamp(0.0, 1.0);
-              setState(() {
-                b.y = nextY;
-                _dragAxisY = true;
-              });
-            },
-            onPanEnd: (_) {
-              if (_dragAxisY) setState(() => _dragAxisY = false);
-            },
-            onPanCancel: () {
-              if (_dragAxisY) setState(() => _dragAxisY = false);
-            },
-            child: CustomPaint(
-              painter: _GuideLinePainter(
-                isVertical: true,
-                color: _dragAxisY ? lineActive : lineIdle,
-                active: _dragAxisY,
-              ),
-            ),
-          ),
-        ),
-        // 横線 = X（左右移動）
-        Positioned(
-          left: felt.left,
-          top: cy - (guideHit / 2),
-          width: felt.width,
-          height: guideHit,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
             onPanStart: (_) => setState(() => _dragAxisX = true),
@@ -2137,9 +2103,40 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             },
             child: CustomPaint(
               painter: _GuideLinePainter(
-                isVertical: false,
+                isVertical: true,
                 color: _dragAxisX ? lineActive : lineIdle,
                 active: _dragAxisX,
+              ),
+            ),
+          ),
+        ),
+        // 横線をドラッグ → 上下（Y）
+        Positioned(
+          left: felt.left,
+          top: cy - (guideHit / 2),
+          width: felt.width,
+          height: guideHit,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onPanStart: (_) => setState(() => _dragAxisY = true),
+            onPanUpdate: (d) {
+              final nextY = (b.y + (d.delta.dy / felt.height)).clamp(0.0, 1.0);
+              setState(() {
+                b.y = nextY;
+                _dragAxisY = true;
+              });
+            },
+            onPanEnd: (_) {
+              if (_dragAxisY) setState(() => _dragAxisY = false);
+            },
+            onPanCancel: () {
+              if (_dragAxisY) setState(() => _dragAxisY = false);
+            },
+            child: CustomPaint(
+              painter: _GuideLinePainter(
+                isVertical: false,
+                color: _dragAxisY ? lineActive : lineIdle,
+                active: _dragAxisY,
               ),
             ),
           ),
