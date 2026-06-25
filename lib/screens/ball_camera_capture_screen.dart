@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/table_guide_geometry.dart';
 import '../services/ball_detection_service.dart';
@@ -10,6 +11,9 @@ import '../services/pending_photo_import_store.dart';
 import '../theme/apple_theme.dart';
 
 /// Camera capture with felt trapezoid guide (254×127 cm playing area, near-end view).
+///
+/// Web (HTTPS): live preview after user taps start (browser requires user gesture).
+/// Fallback: [ImagePicker] opens the device camera on mobile browsers.
 class BallCameraCaptureScreen extends StatefulWidget {
   const BallCameraCaptureScreen({super.key});
 
@@ -20,10 +24,12 @@ class BallCameraCaptureScreen extends StatefulWidget {
 class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
   final _detectionService = BallDetectionService();
   final _previewKey = GlobalKey();
+  final _imagePicker = ImagePicker();
 
   CameraController? _controller;
   List<CameraDescription> _cameras = [];
-  bool _initializing = true;
+  bool _initializing = false;
+  bool _awaitingWebStart = kIsWeb;
   String? _error;
   bool _capturing = false;
   bool _serverOk = false;
@@ -31,11 +37,33 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
   @override
   void initState() {
     super.initState();
-    _init();
+    if (kIsWeb) {
+      _refreshServerStatus();
+    } else {
+      _initializing = true;
+      _init();
+    }
+  }
+
+  Future<void> _refreshServerStatus() async {
+    final ok = await _detectionService.isServerAvailable();
+    if (!mounted) return;
+    setState(() => _serverOk = ok);
+  }
+
+  Future<void> _startCameraFromUserGesture() async {
+    setState(() {
+      _awaitingWebStart = false;
+      _initializing = true;
+      _error = null;
+    });
+    await _init();
   }
 
   Future<void> _init() async {
-    _serverOk = await _detectionService.isServerAvailable();
+    if (!_awaitingWebStart) {
+      _serverOk = await _detectionService.isServerAvailable();
+    }
     try {
       _cameras = await availableCameras();
       if (_cameras.isEmpty) {
@@ -45,7 +73,9 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => _cameras.first,
       );
-      await _openController(back, ResolutionPreset.high);
+      const preset =
+          kIsWeb ? ResolutionPreset.medium : ResolutionPreset.high;
+      await _openController(back, preset);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -56,17 +86,14 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
   }
 
   String _formatInitError(Object e) {
-    final platform = kIsWeb
-        ? 'Web'
-        : defaultTargetPlatform.name;
     if (kIsWeb) {
-      return 'Web ブラウザではカメラが使えないか、HTTPS が必要です。\n'
-          '($platform)\n\n'
-          'Android / iOS の Flutter アプリ (flutter run / 実機 APK) で '
-          '「配置を取る」を試してください。\n\n'
+      return 'ライブプレビューを起動できませんでした。\n'
+          '下の「ブラウザカメラで撮影」を試すか、再試行してください。\n\n'
+          '※ HTTPS の URL から開いてください（GitHub Pages は OK）\n'
+          '※ ブラウザのカメラ許可が必要です\n\n'
           '詳細: $e';
     }
-    return 'カメラを起動できません ($platform)。\n'
+    return 'カメラを起動できません (${defaultTargetPlatform.name})。\n'
         '設定でカメラ権限を確認してください。\n\n'
         '詳細: $e';
   }
@@ -107,6 +134,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
 
   Future<void> _retryInit() async {
     setState(() {
+      _awaitingWebStart = false;
       _initializing = true;
       _error = null;
     });
@@ -115,19 +143,54 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
     await _init();
   }
 
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
+  List<List<double>> _guideCornersNormalizedLists() {
+    return TableGuideGeometry.guideCornersNormalized()
+        .map((p) => [p.dx, p.dy])
+        .toList(growable: false);
+  }
+
+  Future<void> _detectFromBytes({
+    required Uint8List bytes,
+    required Size imageSize,
+    required List<List<double>> corners,
+  }) async {
+    if (!_serverOk) {
+      throw StateError(
+        '検出 API が未接続です。PC で tools/ball_detector の API を起動し、'
+        '同一 Wi‑Fi から PC の IP:8765 へ届く必要があります。',
+      );
+    }
+    final ySpan = CameraPreviewMapper.cornerYSpan(corners);
+    if (ySpan < 0.35) {
+      throw StateError(
+        'ガイド座標が不正です (y幅=${ySpan.toStringAsFixed(2)})。'
+        'もう一度撮影してください',
+      );
+    }
+    final layout = await _detectionService.detectFromBytes(
+      imageBytes: bytes,
+      filename: 'capture.png',
+      refWidth: imageSize.width,
+      refHeight: imageSize.height,
+      corners: corners.map((p) => OffsetLike(p[0], p[1])).toList(),
+    );
+    if (layout.balls.isEmpty) {
+      throw StateError('0 球 — 枠合わせを確認して再撮影してください');
+    }
+    PendingPhotoImportStore.set(layout);
+    if (!mounted) return;
+    await Navigator.of(context).pushNamedAndRemoveUntil(
+      '/layout',
+      (route) =>
+          route.settings.name == '/setup' ||
+          route.settings.name == '/' ||
+          route.isFirst,
+    );
   }
 
   Future<void> _captureAndDetect() async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized || _capturing) {
-      return;
-    }
-    if (!_serverOk) {
-      _showSnack('検出 API が未起動です (127.0.0.1:8765)');
       return;
     }
 
@@ -143,41 +206,44 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
       final file = await controller.takePicture();
       final raw = await file.readAsBytes();
       final baked = await ImageBakeService.bake(raw);
-      final widgetSize = previewBox.size;
-      final guideNorm = TableGuideGeometry.guideCornersNormalized();
       final corners = CameraPreviewMapper.mapGuideToNormalizedImage(
-        guideWidgetNorm: guideNorm,
-        widgetSize: widgetSize,
+        guideWidgetNorm: TableGuideGeometry.guideCornersNormalized(),
+        widgetSize: previewBox.size,
         imageSize: baked.size,
       );
-      final ySpan = CameraPreviewMapper.cornerYSpan(corners);
-      if (ySpan < 0.35) {
-        throw StateError(
-          'ガイド座標の変換が不正です (y幅=${ySpan.toStringAsFixed(2)})。'
-          'もう一度撮影してください',
-        );
-      }
-
-      final layout = await _detectionService.detectFromBytes(
-        imageBytes: baked.bytes,
-        filename: 'capture.png',
-        refWidth: baked.size.width,
-        refHeight: baked.size.height,
-        corners: corners.map((p) => OffsetLike(p[0], p[1])).toList(),
+      await _detectFromBytes(
+        bytes: baked.bytes,
+        imageSize: baked.size,
+        corners: corners,
       );
+    } on BallDetectionException catch (e) {
+      _showSnack(e.message);
+    } catch (e) {
+      _showSnack('$e');
+    } finally {
+      if (mounted) setState(() => _capturing = false);
+    }
+  }
 
-      if (layout.balls.isEmpty) {
-        throw StateError('0 球 — 枠合わせを確認して再撮影してください');
+  /// Mobile browser fallback when live preview is unavailable.
+  Future<void> _captureViaBrowserPicker() async {
+    if (_capturing) return;
+    setState(() => _capturing = true);
+    try {
+      if (kIsWeb && !_serverOk) {
+        await _refreshServerStatus();
       }
-
-      PendingPhotoImportStore.set(layout);
-      if (!mounted) return;
-      await Navigator.of(context).pushNamedAndRemoveUntil(
-        '/layout',
-        (route) =>
-            route.settings.name == '/setup' ||
-            route.settings.name == '/' ||
-            route.isFirst,
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
+      );
+      if (picked == null) return;
+      final raw = await picked.readAsBytes();
+      final baked = await ImageBakeService.bake(raw);
+      await _detectFromBytes(
+        bytes: baked.bytes,
+        imageSize: baked.size,
+        corners: _guideCornersNormalizedLists(),
       );
     } on BallDetectionException catch (e) {
       _showSnack(e.message);
@@ -190,6 +256,12 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
 
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
   }
 
   @override
@@ -211,74 +283,22 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
   }
 
   Widget _buildBody() {
+    if (_awaitingWebStart) {
+      return _buildWebStartGate();
+    }
     if (_initializing) {
       return const Center(
         child: CircularProgressIndicator(color: Colors.white),
       );
     }
     if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.videocam_off, color: Colors.white54, size: 48),
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-              ),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: _retryInit,
-                child: const Text('再試行'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.white54),
-                ),
-                onPressed: () => Navigator.of(context).pushReplacementNamed(
-                  '/photo-import',
-                ),
-                child: const Text('写真から読込へ'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return _buildErrorPanel(showBrowserPicker: kIsWeb);
     }
 
     final controller = _controller!;
     return Column(
       children: [
-        Material(
-          color: const Color(0xFF1B1B1B),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  TableGuideGeometry.specLabel,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-                Text(
-                  _serverOk
-                      ? '黄色枠にフェルト4隅が収まるよう合わせて撮影'
-                      : 'API 未接続 — 撮影のみ（検出不可）',
-                  style: TextStyle(
-                    color: _serverOk ? Colors.white : Colors.orange.shade200,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        _buildHintBar(),
         Expanded(
           key: _previewKey,
           child: Stack(
@@ -319,6 +339,134 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildWebStartGate() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.videocam, color: Colors.white70, size: 56),
+            const SizedBox(height: 16),
+            Text(
+              TableGuideGeometry.specLabel,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 15),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Web でもカメラを使えます（App Store 不要）。\n'
+              'HTTPS の URL から開き、カメラ許可を与えてください。\n'
+              '黄色枠に台を合わせて撮影します。',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            if (!_serverOk) ...[
+              const SizedBox(height: 12),
+              Text(
+                '検出 API 未接続 — 撮影のみ可能（球検出は PC の API が必要）',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.orange.shade200, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: _startCameraFromUserGesture,
+              icon: const Icon(Icons.videocam),
+              label: const Text('カメラプレビューを起動'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white54),
+              ),
+              onPressed: _capturing ? null : _captureViaBrowserPicker,
+              icon: const Icon(Icons.photo_camera_outlined),
+              label: const Text('ブラウザカメラで撮影'),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pushReplacementNamed('/photo-import'),
+              child: const Text('写真から読込へ', style: TextStyle(color: Colors.white54)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorPanel({required bool showBrowserPicker}) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.videocam_off, color: Colors.white54, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(height: 20),
+            if (showBrowserPicker)
+              FilledButton.icon(
+                onPressed: _capturing ? null : _captureViaBrowserPicker,
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text('ブラウザカメラで撮影'),
+              ),
+            if (showBrowserPicker) const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: _retryInit,
+              child: const Text('プレビューを再試行'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white54),
+              ),
+              onPressed: () => Navigator.of(context).pushReplacementNamed(
+                '/photo-import',
+              ),
+              child: const Text('写真から読込へ'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHintBar() {
+    return Material(
+      color: const Color(0xFF1B1B1B),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              TableGuideGeometry.specLabel,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            Text(
+              _serverOk
+                  ? '黄色枠にフェルト4隅が収まるよう合わせて撮影'
+                  : 'API 未接続 — 撮影のみ（検出には PC の API が必要）',
+              style: TextStyle(
+                color: _serverOk ? Colors.white : Colors.orange.shade200,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
