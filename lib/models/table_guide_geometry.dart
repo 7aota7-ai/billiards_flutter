@@ -16,12 +16,17 @@ class TableGuideGeometry {
   /// Felt width / outer width (reference for cushion inset).
   static const feltOuterWidthRatio = playingWidthCm / outerWidthCm;
 
-  /// Perspective: far rail apparent width / near rail width (typical end view).
-  static const farNearWidthRatio = 0.64;
+  /// Perspective: far rail apparent width / near rail width (end view).
+  ///
+  /// Calibrated from hall photos (Jun 2025): 165 cm shooter, ~80 cm table,
+  /// seat only 5–60 cm behind the near cushion (cannot step back). With
+  /// camera ~78 cm above the felt, geometry gives ratio ≈ 0.29. Old 0.64
+  /// implied ~4.5 m back (near top-down), which is impossible here.
+  static const farNearWidthRatio = 0.30;
 
   /// Normalized preview positions for TL → TR → BR → BL.
-  static const farYNorm = 0.18;
-  static const nearYNorm = 0.86;
+  static const farYNorm = 0.30;
+  static const nearYNorm = 0.68;
   static const nearHalfWidthNorm = 0.42;
 
   static List<Offset> guideCornersNormalized() {
@@ -36,11 +41,12 @@ class TableGuideGeometry {
   }
 
   /// Portrait table photo — initial felt corners (photo import / browser camera).
+  /// Same trapezoid as [guideCornersNormalized] for a typical portrait frame.
   static const defaultPhotoCorners = <Offset>[
-    Offset(0.254, 0.151),
-    Offset(0.749, 0.151),
-    Offset(0.892, 0.864),
-    Offset(0.111, 0.864),
+    Offset(0.374, 0.30),
+    Offset(0.626, 0.30),
+    Offset(0.92, 0.68),
+    Offset(0.08, 0.68),
   ];
 
   static List<List<double>> defaultPhotoCornersAsLists() =>
