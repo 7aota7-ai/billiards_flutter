@@ -49,7 +49,6 @@ class BilliardsApp extends StatelessWidget {
               settings: const RouteSettings(name: '/layout'),
               builder: (_) => const BallLayoutEditorScreen(),
             );
-          // 仮ルート: 写真読込（配置エディタ統合前の単体テスト用）
           case '/photo-import':
             return MaterialPageRoute<DetectedBallLayout>(
               settings: const RouteSettings(name: '/photo-import'),
