@@ -401,37 +401,51 @@ class TrajectoryGeometry {
     final skipObjPost = pocketHitPx != null;
     final objEndPx = pocketHitPx ?? objEndBasePx;
 
-    final cueTravelLen = (cueEndPx - contactUsePx).distance;
-    final reachesCueCushion = cueTravelLen >= cueToEdgeLen - 1.0;
-    final cueImpactPx = reachesCueCushion ? cueAutoEndPx : cueEndPx;
-    final cueEdge =
-        reachesCueCushion ? _edgeAtPointPx(cueImpactPx, felt) : null;
-    final cueHitCushion = reachesCueCushion && cueEdge != null;
-    final cueBounceDir =
-        cueEdge == null ? Offset.zero : _reflect(cueDirUnit, cueEdge);
+    final midCuePx = (contactUsePx + cueEndPx) / 2;
+    final cueControlPx = midCuePx +
+        Offset(cueAnchorNorm.dx * felt.width, cueAnchorNorm.dy * felt.height);
+    final midObjPx = (contactUsePx + objEndPx) / 2;
+    final objControlPx = midObjPx +
+        Offset(objAnchorNorm.dx * felt.width, objAnchorNorm.dy * felt.height);
+
+    final cueEdgeAtEnd = _edgeAtPointPx(cueEndPx, felt);
+    final cueHitCushion = cueEdgeAtEnd != null;
+    final cueIncoming = _quadBezierTangentAtEnd(
+      contactUsePx,
+      cueControlPx,
+      cueEndPx,
+      fallback: cueDirUnit,
+    );
+    final cueBounceDir = cueEdgeAtEnd == null
+        ? Offset.zero
+        : _reflect(cueIncoming, cueEdgeAtEnd);
     final cueBounceLen =
-        cueHitCushion ? _rayToFeltEdgePx(cueImpactPx, cueBounceDir, felt) : 0.0;
-    final cueBounceAutoEndPx = cueImpactPx + cueBounceDir * cueBounceLen;
+        cueHitCushion ? _rayToFeltEdgePx(cueEndPx, cueBounceDir, felt) : 0.0;
+    final cueBounceAutoEndPx = cueHitCushion
+        ? cueEndPx + cueBounceDir * cueBounceLen
+        : cueEndPx;
     final cueBounceEndPx = cueBounceEndOverrideNorm == null
         ? cueBounceAutoEndPx
         : _toPx(cueBounceEndOverrideNorm, felt);
-    final objEdge = skipObjPost ? null : _edgeAtPointPx(objEndPx, felt);
-    final objHitCushion = !skipObjPost && objEdge != null;
-    final objBounceDir =
-        objEdge == null ? Offset.zero : _reflect(objDirUnit, objEdge);
+
+    final objEdgeAtEnd = skipObjPost ? null : _edgeAtPointPx(objEndPx, felt);
+    final objHitCushion = !skipObjPost && objEdgeAtEnd != null;
+    final objIncoming = _quadBezierTangentAtEnd(
+      contactUsePx,
+      objControlPx,
+      objEndPx,
+      fallback: objDirUnit,
+    );
+    final objBounceDir = objEdgeAtEnd == null
+        ? Offset.zero
+        : _reflect(objIncoming, objEdgeAtEnd);
     final objBounceLen =
         objHitCushion ? _rayToFeltEdgePx(objEndPx, objBounceDir, felt) : 0.0;
-    final objBounceAutoEndPx = objEndPx + objBounceDir * objBounceLen;
+    final objBounceAutoEndPx =
+        objHitCushion ? objEndPx + objBounceDir * objBounceLen : objEndPx;
     final objBounceEndPx = objBounceEndOverrideNorm == null
         ? objBounceAutoEndPx
         : _toPx(objBounceEndOverrideNorm, felt);
-
-    final midCuePx = (contactUsePx + cueEndPx) / 2;
-    final midObjPx = (contactUsePx + objEndPx) / 2;
-    final cueControlPx = midCuePx +
-        Offset(cueAnchorNorm.dx * felt.width, cueAnchorNorm.dy * felt.height);
-    final objControlPx = midObjPx +
-        Offset(objAnchorNorm.dx * felt.width, objAnchorNorm.dy * felt.height);
 
     return TrajectoryGeometry(
       feltNorm: feltNorm,
@@ -527,6 +541,43 @@ class TrajectoryGeometry {
     if ((pointPx.dy - felt.top).abs() <= threshold) return _Edge.top;
     if ((pointPx.dy - felt.bottom).abs() <= threshold) return _Edge.bottom;
     return null;
+  }
+
+  /// クッション付近なら辺上へスナップ（編集時の反射判定用）。
+  static Offset snapToCushionEdgePx(Offset p, Rect felt) {
+    final snapDist = math.max(16.0, felt.width * 0.03);
+    final dLeft = (p.dx - felt.left).abs();
+    final dRight = (p.dx - felt.right).abs();
+    final dTop = (p.dy - felt.top).abs();
+    final dBottom = (p.dy - felt.bottom).abs();
+    final minD = math.min(math.min(dLeft, dRight), math.min(dTop, dBottom));
+    if (minD > snapDist) return p;
+    if (minD == dLeft) {
+      return Offset(felt.left, p.dy.clamp(felt.top, felt.bottom));
+    }
+    if (minD == dRight) {
+      return Offset(felt.right, p.dy.clamp(felt.top, felt.bottom));
+    }
+    if (minD == dTop) {
+      return Offset(p.dx.clamp(felt.left, felt.right), felt.top);
+    }
+    return Offset(p.dx.clamp(felt.left, felt.right), felt.bottom);
+  }
+
+  static Offset _quadBezierTangentAtEnd(
+    Offset start,
+    Offset control,
+    Offset end, {
+    required Offset fallback,
+  }) {
+    final t = end - control;
+    final len = t.distance;
+    if (len < 1e-9) {
+      final fb = end - start;
+      final fl = fb.distance;
+      return fl < 1e-9 ? fallback : fb / fl;
+    }
+    return t / len;
   }
 
   static Offset _reflect(Offset incoming, _Edge edge) {
@@ -1178,6 +1229,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
   final TransformationController _phoneZoomCtrl = TransformationController();
   String? _phoneZoomFitKey;
+  bool _phoneZoomDidInitialFit = false;
 
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
@@ -1258,14 +1310,16 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     super.dispose();
   }
 
-  /// SP: 台は常に画面幅いっぱい。初期は全体が見える倍率、ピンチで幅いっぱいまで拡大。
+  /// SP: 台は常に画面幅いっぱい。初回のみ全体表示倍率を適用（以降はユーザーのズームを維持）。
   void _applyPhoneZoomFit(double maxW, double maxH, double aspectRatio) {
     final tableH = maxW / aspectRatio;
     final fitScale = math.min(1.0, maxH / tableH);
     final key =
         '${maxW.toStringAsFixed(1)}x${maxH.toStringAsFixed(1)}@$aspectRatio';
-    if (_phoneZoomFitKey == key) return;
+    if (_phoneZoomFitKey == key && _phoneZoomDidInitialFit) return;
     _phoneZoomFitKey = key;
+    if (_phoneZoomDidInitialFit) return;
+    _phoneZoomDidInitialFit = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _phoneZoomCtrl.value = Matrix4.diagonal3Values(fitScale, fitScale, 1.0);
@@ -1298,6 +1352,19 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   double _ballRadiusPx() {
     if (_felt == Rect.zero) return 8;
     return BallTableScale.radiusPx(_felt, phone: _isPhone);
+  }
+
+  Offset _snapTrajNormToCushion(Offset norm) {
+    final felt = _felt;
+    final px = Offset(
+      felt.left + norm.dx * felt.width,
+      felt.top + norm.dy * felt.height,
+    );
+    final snapped = TrajectoryGeometry.snapToCushionEdgePx(px, felt);
+    return Offset(
+      ((snapped.dx - felt.left) / felt.width).clamp(0.0, 1.0),
+      ((snapped.dy - felt.top) / felt.height).clamp(0.0, 1.0),
+    );
   }
 
   void _placeBallRandomOnTable(BallInstance b) {
@@ -1464,6 +1531,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       final ox = (nx - line.contact.dx).clamp(-0.5, 0.5);
       final oy = (ny - line.contact.dy).clamp(-0.5, 0.5);
       line.cueAnchor = Offset(ox, oy);
+      line.cueBounceEndOverride = null;
       setState(() {});
       return;
     }
@@ -1473,13 +1541,15 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       final ox = (nx - line.contact.dx).clamp(-0.5, 0.5);
       final oy = (ny - line.contact.dy).clamp(-0.5, 0.5);
       line.objAnchor = Offset(ox, oy);
+      line.objBounceEndOverride = null;
       setState(() {});
       return;
     }
 
     if (_dragCueEndIdx != null) {
       final line = _lines[_dragCueEndIdx!];
-      line.cueEndOverride = Offset(nx, ny);
+      line.cueEndOverride = _snapTrajNormToCushion(Offset(nx, ny));
+      line.cueBounceEndOverride = null;
       setState(() {});
       return;
     }
@@ -1493,7 +1563,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
     if (_dragObjEndIdx != null) {
       final line = _lines[_dragObjEndIdx!];
-      line.objEndOverride = Offset(nx, ny);
+      line.objEndOverride = _snapTrajNormToCushion(Offset(nx, ny));
+      line.objBounceEndOverride = null;
       setState(() {});
       return;
     }
