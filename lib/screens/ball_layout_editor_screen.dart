@@ -5,6 +5,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/detected_ball_layout.dart';
+import '../screens/ball_photo_import_screen.dart';
+import '../services/ball_detection_service.dart';
 import '../theme/apple_theme.dart';
 
 // --- Game / ball models ---
@@ -1192,7 +1195,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
   void _setPhoneAxisStatus() {
     if (_spAxisBallId != null) {
-      _status = '縦線をドラッグで左右・横線をドラッグで上下に位置を調整';
+      _status = 'ドラッグで移動 / 縦横線で微調整 / 2回タップでトレイへ';
     }
   }
 
@@ -1432,10 +1435,6 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
     if (_dragBallId != null) {
       final b = _balls.firstWhere((e) => e.def.id == _dragBallId);
-      if (_isPhone && _spAxisBallId == b.def.id) {
-        setState(() {});
-        return;
-      }
       b.x = nx;
       b.y = ny;
       b.onTable = true;
@@ -1672,6 +1671,66 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
+  Future<void> _openPhotoImport() async {
+    final result = await Navigator.of(context).push<DetectedBallLayout>(
+      MaterialPageRoute<DetectedBallLayout>(
+        builder: (_) => const BallPhotoImportScreen(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    _applyDetectedLayout(result);
+  }
+
+  void _applyDetectedLayout(DetectedBallLayout layout) {
+    final usedIds = <int>{};
+    final assignments = <DetectedBall, int>{};
+
+    for (final detected in layout.balls) {
+      var id = detected.id ?? suggestBallId(detected.color, allowCue: true);
+      if (id != null && usedIds.contains(id)) {
+        id = null;
+      }
+      if (id != null) {
+        usedIds.add(id);
+        assignments[detected] = id;
+      }
+    }
+
+    var nextId = 1;
+    for (final detected in layout.balls) {
+      if (assignments.containsKey(detected)) continue;
+      while (nextId <= _mode.totalBalls && usedIds.contains(nextId)) {
+        nextId++;
+      }
+      if (nextId > _mode.totalBalls) break;
+      assignments[detected] = nextId;
+      usedIds.add(nextId);
+      nextId++;
+    }
+
+    setState(() {
+      for (final b in _balls) {
+        b.onTable = false;
+      }
+      for (final entry in assignments.entries) {
+        final detected = entry.key;
+        final id = entry.value;
+        final ball = _balls.where((b) => b.def.id == id).firstOrNull;
+        if (ball == null) continue;
+        ball
+          ..x = detected.x.clamp(0.0, 1.0)
+          ..y = detected.y.clamp(0.0, 1.0)
+          ..onTable = true;
+      }
+      _lines.clear();
+      _trajMode = false;
+      _trajEditMode = false;
+      _clearPhoneAxisGuides();
+      _status =
+          '写真から ${assignments.length} 球を配置（色ヒントで仮割当、要確認）';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
@@ -1884,6 +1943,12 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                   style: buttonStyle,
                   onPressed: _lines.isEmpty ? null : _undoLastTrajectory,
                   child: const Text('軌道修正'),
+                ),
+                SizedBox(width: spacing),
+                OutlinedButton(
+                  style: buttonStyle,
+                  onPressed: _openPhotoImport,
+                  child: const Text('写真から読込'),
                 ),
                 SizedBox(width: spacing),
                 OutlinedButton(
@@ -2304,7 +2369,6 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         onPanDown: (d) =>
             _handleBallPointerDown(b, d.localPosition, d.localPosition),
         onPanUpdate: (d) {
-          if (_isPhone) return;
           if (!_trajMode && _dragBallId == b.def.id) {
             final stackBox =
                 _tableStackKey.currentContext?.findRenderObject() as RenderBox?;
