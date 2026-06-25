@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'models/detected_ball_layout.dart';
 import 'screens/ball_layout_editor_screen.dart';
-import 'screens/ball_photo_import_screen.dart';
 import 'screens/bowlard_record_screen.dart';
 import 'screens/count_nine_screen.dart';
 import 'screens/five_nine_screen.dart';
@@ -48,11 +46,6 @@ class BilliardsApp extends StatelessWidget {
             return MaterialPageRoute<void>(
               settings: const RouteSettings(name: '/layout'),
               builder: (_) => const BallLayoutEditorScreen(),
-            );
-          case '/photo-import':
-            return MaterialPageRoute<DetectedBallLayout>(
-              settings: const RouteSettings(name: '/photo-import'),
-              builder: (_) => const BallPhotoImportScreen(),
             );
           case '/bowlard':
             return MaterialPageRoute<void>(
@@ -131,7 +124,6 @@ String _normalizeInitialRoute() {
     '/setup',
     '/scoreboard',
     '/layout',
-    '/photo-import',
     '/bowlard',
     '/count-nine',
     '/five-nine',
