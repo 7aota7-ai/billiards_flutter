@@ -567,6 +567,8 @@ class TrajectoryGeometry {
     return contactPx + aimUnit * _rayToFeltEdgePx(contactPx, aimUnit, felt);
   }
 
+  static const double _bouncePreviewFraction = 0.38;
+
   static List<Offset> _computeCueCushionChainNorm({
     required Rect felt,
     required Offset contactPx,
@@ -592,11 +594,25 @@ class TrajectoryGeometry {
       final edge = _edgeAtPointPx(prev, felt);
       if (edge == null) break;
       final bounceDir = _reflect(incoming, edge);
-      final autoEnd = prev + bounceDir * _rayToFeltEdgePx(prev, bounceDir, felt);
+      final fullLen = _rayToFeltEdgePx(prev, bounceDir, felt);
+      if (fullLen < 1e-6) break;
+
       final override =
           bi < bounceOverridesNorm.length ? bounceOverridesNorm[bi] : null;
-      final endPx =
-          override != null ? _toPx(override, felt) : autoEnd;
+
+      if (override == null) {
+        // デフォルトは次クッション手前の短いプレビュー1本だけ（4クッション全部は出さない）
+        final previewLen = math
+            .max(
+              fullLen * _bouncePreviewFraction,
+              math.min(felt.width, felt.height) * 0.055,
+            )
+            .clamp(0.0, fullLen);
+        chainPx.add(prev + bounceDir * previewLen);
+        break;
+      }
+
+      final endPx = _toPx(override, felt);
       chainPx.add(endPx);
       if (_edgeAtPointPx(endPx, felt) == null) break;
       prev = endPx;
@@ -1713,7 +1729,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       final line = _lines[_dragCueCushionLineIdx!];
       final seg = _dragCueCushionSegIdx!;
       final raw = Offset(nx, ny);
-      final norm = seg == 0 ? _snapTrajNormToCushion(raw) : raw;
+      final norm = _snapTrajNormToCushion(raw);
       switch (seg) {
         case 0:
           line.cueEndOverride = norm;
