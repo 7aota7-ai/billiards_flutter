@@ -1174,6 +1174,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   int? _spAxisBallId;
   bool _dragAxisX = false;
   bool _dragAxisY = false;
+  bool _spBallSetReady = false;
 
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
@@ -1218,6 +1219,32 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         ..clear()
         ..addAll(init.lines.map((l) => l.copy()));
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isPhone && !_spBallSetReady) {
+      _spBallSetReady = true;
+      _upgradeToFifteenBallSet();
+    }
+  }
+
+  /// SP: トレイは常に15球。既存配置は id で引き継ぐ。
+  void _upgradeToFifteenBallSet() {
+    final byId = {for (final b in _balls) b.def.id: b};
+    final defs = BallDefinition.forMode(GameMode.fifteen);
+    setState(() {
+      _mode = GameMode.fifteen;
+      _balls = defs.map((d) {
+        final old = byId[d.id];
+        if (old != null) {
+          return BallInstance(
+              def: d, x: old.x, y: old.y, onTable: old.onTable);
+        }
+        return BallInstance(def: d, x: 0.5, y: 0.5, onTable: false);
+      }).toList();
+    });
   }
 
   @override
@@ -1668,15 +1695,15 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       return Column(
         children: [
           const SizedBox(height: 10),
-          _buildTopControls(dense: true),
-          const SizedBox(height: 10),
+          _buildTopControls(dense: true, showModeSelector: false),
+          const SizedBox(height: 6),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
               child: _buildPhoneZoomableTable(aspectRatio: 2.0),
             ),
           ),
-          _buildBottomControls(context, compactInputs: true),
+          _buildBottomControls(context, phoneLayout: true),
         ],
       );
     }
@@ -1701,15 +1728,15 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   Widget _buildPortraitLayout(BuildContext context) {
     return Column(
       children: [
-        const SizedBox(height: 8),
-        _buildTopControls(dense: true),
+        const SizedBox(height: 4),
+        _buildTopControls(dense: true, showModeSelector: false),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+            padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
             child: _buildPhoneZoomableTable(aspectRatio: 0.5),
           ),
         ),
-        _buildBottomControls(context, compactInputs: true),
+        _buildBottomControls(context, phoneLayout: true),
       ],
     );
   }
@@ -1718,22 +1745,23 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   Widget _buildPhoneZoomableTable({required double aspectRatio}) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final widthIsLong = aspectRatio >= 1.0;
-        late final double tableW;
-        late final double tableH;
-        if (widthIsLong) {
-          tableW = math.max(constraints.maxWidth * 1.15, 720.0);
-          tableH = tableW / aspectRatio;
-        } else {
-          tableH = math.max(constraints.maxHeight * 1.2, 640.0);
+        final maxW = constraints.maxWidth;
+        final maxH = constraints.maxHeight;
+        if (maxW <= 0 || maxH <= 0) return const SizedBox.shrink();
+
+        var tableW = maxW;
+        var tableH = tableW / aspectRatio;
+        if (tableH > maxH) {
+          tableH = maxH;
           tableW = tableH * aspectRatio;
         }
+
         final lockPan = _trajEditMode;
         return InteractiveViewer(
-          minScale: 0.9,
+          minScale: 1.0,
           maxScale: 4.5,
           constrained: false,
-          boundaryMargin: const EdgeInsets.all(40),
+          boundaryMargin: const EdgeInsets.all(16),
           panEnabled: !lockPan,
           scaleEnabled: true,
           child: SizedBox(
@@ -1746,7 +1774,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
-  Widget _buildTopControls({required bool dense}) {
+  Widget _buildTopControls({
+    required bool dense,
+    bool showModeSelector = true,
+  }) {
     final spacing = dense ? 6.0 : 8.0;
     final buttonStyle = ButtonStyle(
       visualDensity: VisualDensity.compact,
@@ -1763,19 +1794,21 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SegmentedButton<GameMode>(
-            segments: const [
-              ButtonSegment(value: GameMode.nine, label: Text('9球')),
-              ButtonSegment(value: GameMode.ten, label: Text('10球')),
-              ButtonSegment(value: GameMode.fifteen, label: Text('15球')),
-            ],
-            selected: {_mode},
-            onSelectionChanged: (s) {
-              if (s.isEmpty) return;
-              _applyMode(s.first, resetPositions: true);
-            },
-          ),
-          SizedBox(height: spacing),
+          if (showModeSelector) ...[
+            SegmentedButton<GameMode>(
+              segments: const [
+                ButtonSegment(value: GameMode.nine, label: Text('9球')),
+                ButtonSegment(value: GameMode.ten, label: Text('10球')),
+                ButtonSegment(value: GameMode.fifteen, label: Text('15球')),
+              ],
+              selected: {_mode},
+              onSelectionChanged: (s) {
+                if (s.isEmpty) return;
+                _applyMode(s.first, resetPositions: true);
+              },
+            ),
+            SizedBox(height: spacing),
+          ],
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -1856,33 +1889,80 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
-  Widget _buildBottomControls(BuildContext context,
-      {required bool compactInputs}) {
+  Widget _buildBottomControls(
+    BuildContext context, {
+    bool compactInputs = true,
+    bool phoneLayout = false,
+  }) {
+    final trayHeight = phoneLayout ? 50.0 : 78.0;
+    final trayRadius = phoneLayout ? 20.0 : 28.0;
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: double.infinity,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: phoneLayout ? 4 : 8,
+          ),
           child: Text(
             _status,
+            maxLines: phoneLayout ? 1 : 2,
+            overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
+                  fontSize: phoneLayout ? 14 : 16,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
           ),
         ),
         SizedBox(
-          height: 78,
+          height: trayHeight,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            children: _balls.map((b) => _trayBall(b)).toList(),
+            padding: EdgeInsets.symmetric(horizontal: phoneLayout ? 6 : 8),
+            children: _balls.map((b) => _trayBall(b, radius: trayRadius)).toList(),
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-          child: compactInputs
+          padding: EdgeInsets.fromLTRB(12, phoneLayout ? 4 : 8, 12, phoneLayout ? 6 : 12),
+          child: phoneLayout
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _tagCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'タグ',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: TextField(
+                        controller: _memoCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'メモ',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 10,
+                          ),
+                        ),
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                )
+              : compactInputs
               ? Column(
                   children: [
                     TextField(
@@ -2212,8 +2292,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
-  Widget _trayBall(BallInstance b) {
-    final r = 28.0;
+  Widget _trayBall(BallInstance b, {double radius = 28.0}) {
+    final r = radius;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Opacity(
