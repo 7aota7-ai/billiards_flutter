@@ -129,6 +129,8 @@ class BallTableScale {
 // --- Trajectory ---
 
 class TrajectoryLine {
+  static const int maxCueCushions = 4;
+
   TrajectoryLine({
     required this.cueBallId,
     required this.objBallId,
@@ -138,6 +140,8 @@ class TrajectoryLine {
     this.cueStartOverride,
     this.cueEndOverride,
     this.cueBounceEndOverride,
+    this.cueBounce2EndOverride,
+    this.cueBounce3EndOverride,
     this.objEndOverride,
     this.objBounceEndOverride,
   });
@@ -150,8 +154,33 @@ class TrajectoryLine {
   Offset? cueStartOverride;
   Offset? cueEndOverride;
   Offset? cueBounceEndOverride;
+  Offset? cueBounce2EndOverride;
+  Offset? cueBounce3EndOverride;
   Offset? objEndOverride;
   Offset? objBounceEndOverride;
+
+  List<Offset?> get cueBounceOverridesOrdered => [
+        cueBounceEndOverride,
+        cueBounce2EndOverride,
+        cueBounce3EndOverride,
+      ];
+
+  void clearCueBounceOverrides() {
+    cueBounceEndOverride = null;
+    cueBounce2EndOverride = null;
+    cueBounce3EndOverride = null;
+  }
+
+  void clearCueBounceOverridesFrom(int bounceIndex) {
+    if (bounceIndex <= 0) {
+      clearCueBounceOverrides();
+    } else if (bounceIndex == 1) {
+      cueBounce2EndOverride = null;
+      cueBounce3EndOverride = null;
+    } else if (bounceIndex == 2) {
+      cueBounce3EndOverride = null;
+    }
+  }
 
   TrajectoryLine copy() => TrajectoryLine(
         cueBallId: cueBallId,
@@ -162,6 +191,8 @@ class TrajectoryLine {
         cueStartOverride: cueStartOverride,
         cueEndOverride: cueEndOverride,
         cueBounceEndOverride: cueBounceEndOverride,
+        cueBounce2EndOverride: cueBounce2EndOverride,
+        cueBounce3EndOverride: cueBounce3EndOverride,
         objEndOverride: objEndOverride,
         objBounceEndOverride: objBounceEndOverride,
       );
@@ -183,6 +214,16 @@ class TrajectoryLine {
           'cueBounceEndOverride': {
             'x': cueBounceEndOverride!.dx,
             'y': cueBounceEndOverride!.dy,
+          },
+        if (cueBounce2EndOverride != null)
+          'cueBounce2EndOverride': {
+            'x': cueBounce2EndOverride!.dx,
+            'y': cueBounce2EndOverride!.dy,
+          },
+        if (cueBounce3EndOverride != null)
+          'cueBounce3EndOverride': {
+            'x': cueBounce3EndOverride!.dx,
+            'y': cueBounce3EndOverride!.dy,
           },
         if (objEndOverride != null)
           'objEndOverride': {'x': objEndOverride!.dx, 'y': objEndOverride!.dy},
@@ -227,6 +268,18 @@ class TrajectoryLine {
         cueBounceEnd =
             Offset((cbe['x'] as num).toDouble(), (cbe['y'] as num).toDouble());
       }
+      Offset? cueBounce2;
+      final cbe2 = j['cueBounce2EndOverride'];
+      if (cbe2 is Map<String, dynamic>) {
+        cueBounce2 = Offset(
+            (cbe2['x'] as num).toDouble(), (cbe2['y'] as num).toDouble());
+      }
+      Offset? cueBounce3;
+      final cbe3 = j['cueBounce3EndOverride'];
+      if (cbe3 is Map<String, dynamic>) {
+        cueBounce3 = Offset(
+            (cbe3['x'] as num).toDouble(), (cbe3['y'] as num).toDouble());
+      }
       return TrajectoryLine(
         cueBallId: j['cueBallId'] as int,
         objBallId: j['objBallId'] as int,
@@ -238,6 +291,8 @@ class TrajectoryLine {
         cueStartOverride: ov,
         cueEndOverride: cueEnd,
         cueBounceEndOverride: cueBounceEnd,
+        cueBounce2EndOverride: cueBounce2,
+        cueBounce3EndOverride: cueBounce3,
         objEndOverride: objEnd,
         objBounceEndOverride: objBounceEnd,
       );
@@ -257,6 +312,7 @@ class TrajectoryGeometry {
     required this.cueDir,
     required this.objDir,
     required this.cueEnd,
+    required this.cueCushionChain,
     required this.cueBounceEnd,
     required this.cueHitCushion,
     required this.objEnd,
@@ -275,6 +331,7 @@ class TrajectoryGeometry {
   final Offset cueDir;
   final Offset objDir;
   final Offset cueEnd;
+  final List<Offset> cueCushionChain;
   final Offset cueBounceEnd;
   final bool cueHitCushion;
   final Offset objEnd;
@@ -316,6 +373,8 @@ class TrajectoryGeometry {
     Offset? cueStartOverrideNorm,
     Offset? cueEndOverrideNorm,
     Offset? cueBounceEndOverrideNorm,
+    Offset? cueBounce2EndOverrideNorm,
+    Offset? cueBounce3EndOverrideNorm,
     Offset? objEndOverrideNorm,
     Offset? objBounceEndOverrideNorm,
   }) {
@@ -386,12 +445,40 @@ class TrajectoryGeometry {
         : tangentPx / tangentLen;
 
     final cueToEdgeLen = _rayToFeltEdgePx(contactUsePx, cueDirUnit, felt);
-    final cueAutoEndPx = contactUsePx + cueDirUnit * cueToEdgeLen;
+    final cueStraightEndPx = contactUsePx + cueDirUnit * cueToEdgeLen;
     final objLen = _rayToFeltEdgePx(contactUsePx, objDirUnit, felt);
     final objAutoEndPx = contactUsePx + objDirUnit * objLen;
-    final cueEndPx = cueEndOverrideNorm == null
-        ? cueAutoEndPx
-        : _toPx(cueEndOverrideNorm, felt);
+
+    Offset cueEndPx;
+    if (cueEndOverrideNorm != null) {
+      cueEndPx = _toPx(cueEndOverrideNorm, felt);
+    } else {
+      cueEndPx = _autoCueFirstEndPx(
+        contactPx: contactUsePx,
+        cueDirUnit: cueDirUnit,
+        cueAnchorNorm: cueAnchorNorm,
+        straightEndPx: cueStraightEndPx,
+        felt: felt,
+      );
+    }
+
+    final midCuePx = (contactUsePx + cueEndPx) / 2;
+    var cueControlPx = midCuePx +
+        Offset(cueAnchorNorm.dx * felt.width, cueAnchorNorm.dy * felt.height);
+
+    if (cueEndOverrideNorm == null && cueAnchorNorm != Offset.zero) {
+      cueEndPx = _autoCueFirstEndPx(
+        contactPx: contactUsePx,
+        cueDirUnit: cueDirUnit,
+        cueAnchorNorm: cueAnchorNorm,
+        straightEndPx: cueStraightEndPx,
+        felt: felt,
+        controlPx: cueControlPx,
+      );
+      cueControlPx = (contactUsePx + cueEndPx) / 2 +
+          Offset(cueAnchorNorm.dx * felt.width, cueAnchorNorm.dy * felt.height);
+    }
+
     final objEndBasePx = objEndOverrideNorm == null
         ? objAutoEndPx
         : _toPx(objEndOverrideNorm, felt);
@@ -401,32 +488,25 @@ class TrajectoryGeometry {
     final skipObjPost = pocketHitPx != null;
     final objEndPx = pocketHitPx ?? objEndBasePx;
 
-    final midCuePx = (contactUsePx + cueEndPx) / 2;
-    final cueControlPx = midCuePx +
-        Offset(cueAnchorNorm.dx * felt.width, cueAnchorNorm.dy * felt.height);
     final midObjPx = (contactUsePx + objEndPx) / 2;
     final objControlPx = midObjPx +
         Offset(objAnchorNorm.dx * felt.width, objAnchorNorm.dy * felt.height);
 
-    final cueEdgeAtEnd = _edgeAtPointPx(cueEndPx, felt);
-    final cueHitCushion = cueEdgeAtEnd != null;
-    final cueIncoming = _quadBezierTangentAtEnd(
-      contactUsePx,
-      cueControlPx,
-      cueEndPx,
-      fallback: cueDirUnit,
+    final cueCushionChainNorm = _computeCueCushionChainNorm(
+      felt: felt,
+      contactPx: contactUsePx,
+      controlPx: cueControlPx,
+      cueDirUnit: cueDirUnit,
+      firstEndPx: cueEndPx,
+      bounceOverridesNorm: [
+        cueBounceEndOverrideNorm,
+        cueBounce2EndOverrideNorm,
+        cueBounce3EndOverrideNorm,
+      ],
     );
-    final cueBounceDir = cueEdgeAtEnd == null
-        ? Offset.zero
-        : _reflect(cueIncoming, cueEdgeAtEnd);
-    final cueBounceLen =
-        cueHitCushion ? _rayToFeltEdgePx(cueEndPx, cueBounceDir, felt) : 0.0;
-    final cueBounceAutoEndPx = cueHitCushion
-        ? cueEndPx + cueBounceDir * cueBounceLen
-        : cueEndPx;
-    final cueBounceEndPx = cueBounceEndOverrideNorm == null
-        ? cueBounceAutoEndPx
-        : _toPx(cueBounceEndOverrideNorm, felt);
+    final cueBounceEndPx = cueCushionChainNorm.isEmpty
+        ? cueEndPx
+        : _toPx(cueCushionChainNorm.last, felt);
 
     final objEdgeAtEnd = skipObjPost ? null : _edgeAtPointPx(objEndPx, felt);
     final objHitCushion = !skipObjPost && objEdgeAtEnd != null;
@@ -456,8 +536,9 @@ class TrajectoryGeometry {
       cueDir: cueDirUnit,
       objDir: objDirUnit,
       cueEnd: _norm(cueEndPx, felt),
+      cueCushionChain: cueCushionChainNorm,
       cueBounceEnd: _norm(cueBounceEndPx, felt),
-      cueHitCushion: cueHitCushion,
+      cueHitCushion: cueCushionChainNorm.length >= 2,
       objEnd: _norm(objEndPx, felt),
       objBounceEnd: _norm(objBounceEndPx, felt),
       objHitCushion: objHitCushion,
@@ -465,6 +546,64 @@ class TrajectoryGeometry {
       objControl: _norm(objControlPx, felt),
       skipObjPost: skipObjPost,
     );
+  }
+
+  static Offset _autoCueFirstEndPx({
+    required Offset contactPx,
+    required Offset cueDirUnit,
+    required Offset cueAnchorNorm,
+    required Offset straightEndPx,
+    required Rect felt,
+    Offset? controlPx,
+  }) {
+    if (cueAnchorNorm == Offset.zero) return straightEndPx;
+    final ctrl = controlPx ??
+        (contactPx + straightEndPx) / 2 +
+            Offset(cueAnchorNorm.dx * felt.width,
+                cueAnchorNorm.dy * felt.height);
+    final aim = ctrl - contactPx;
+    final aimLen = aim.distance;
+    final aimUnit = aimLen < 1e-9 ? cueDirUnit : aim / aimLen;
+    return contactPx + aimUnit * _rayToFeltEdgePx(contactPx, aimUnit, felt);
+  }
+
+  static List<Offset> _computeCueCushionChainNorm({
+    required Rect felt,
+    required Offset contactPx,
+    required Offset controlPx,
+    required Offset cueDirUnit,
+    required Offset firstEndPx,
+    required List<Offset?> bounceOverridesNorm,
+  }) {
+    final chainPx = <Offset>[firstEndPx];
+    if (_edgeAtPointPx(firstEndPx, felt) == null) {
+      return chainPx.map((p) => _norm(p, felt)).toList(growable: false);
+    }
+
+    var incoming = _quadBezierTangentAtEnd(
+      contactPx,
+      controlPx,
+      firstEndPx,
+      fallback: cueDirUnit,
+    );
+    var prev = firstEndPx;
+
+    for (var bi = 0; bi < TrajectoryLine.maxCueCushions - 1; bi++) {
+      final edge = _edgeAtPointPx(prev, felt);
+      if (edge == null) break;
+      final bounceDir = _reflect(incoming, edge);
+      final autoEnd = prev + bounceDir * _rayToFeltEdgePx(prev, bounceDir, felt);
+      final override =
+          bi < bounceOverridesNorm.length ? bounceOverridesNorm[bi] : null;
+      final endPx =
+          override != null ? _toPx(override, felt) : autoEnd;
+      chainPx.add(endPx);
+      if (_edgeAtPointPx(endPx, felt) == null) break;
+      prev = endPx;
+      incoming = bounceDir;
+    }
+
+    return chainPx.map((p) => _norm(p, felt)).toList(growable: false);
   }
 
   static Rect _normRect(Rect felt) {
@@ -810,8 +949,8 @@ class TrajectoryPainter extends CustomPainter {
     this.draggingContactIndex,
     this.draggingCueAnchorIndex,
     this.draggingObjAnchorIndex,
-    this.draggingCueEndIndex,
-    this.draggingCueBounceEndIndex,
+    this.draggingCueCushionLineIndex,
+    this.draggingCueCushionSegIndex,
     this.draggingObjEndIndex,
     this.draggingObjBounceEndIndex,
   });
@@ -824,8 +963,8 @@ class TrajectoryPainter extends CustomPainter {
   final int? draggingContactIndex;
   final int? draggingCueAnchorIndex;
   final int? draggingObjAnchorIndex;
-  final int? draggingCueEndIndex;
-  final int? draggingCueBounceEndIndex;
+  final int? draggingCueCushionLineIndex;
+  final int? draggingCueCushionSegIndex;
   final int? draggingObjEndIndex;
   final int? draggingObjBounceEndIndex;
 
@@ -877,6 +1016,8 @@ class TrajectoryPainter extends CustomPainter {
                 : null),
         cueEndOverrideNorm: line.cueEndOverride,
         cueBounceEndOverrideNorm: line.cueBounceEndOverride,
+        cueBounce2EndOverrideNorm: line.cueBounce2EndOverride,
+        cueBounce3EndOverrideNorm: line.cueBounce3EndOverride,
         objEndOverrideNorm: line.objEndOverride,
         objBounceEndOverrideNorm: line.objBounceEndOverride,
       );
@@ -895,10 +1036,14 @@ class TrajectoryPainter extends CustomPainter {
         felt.left + geom.cueEnd.dx * felt.width,
         felt.top + geom.cueEnd.dy * felt.height,
       );
-      final cueBounceEnd = Offset(
-        felt.left + geom.cueBounceEnd.dx * felt.width,
-        felt.top + geom.cueBounceEnd.dy * felt.height,
-      );
+      final cueChainPx = geom.cueCushionChain
+          .map(
+            (n) => Offset(
+              felt.left + n.dx * felt.width,
+              felt.top + n.dy * felt.height,
+            ),
+          )
+          .toList(growable: false);
       final objEnd = Offset(
         felt.left + geom.objEnd.dx * felt.width,
         felt.top + geom.objEnd.dy * felt.height,
@@ -931,11 +1076,11 @@ class TrajectoryPainter extends CustomPainter {
         const Color.fromRGBO(255, 255, 255, 0.95),
         draggingCueAnchorIndex == i,
       );
-      if (geom.cueHitCushion) {
+      for (var ci = 1; ci < cueChainPx.length; ci++) {
         _dashedLine(
           canvas,
-          cueEnd,
-          cueBounceEnd,
+          cueChainPx[ci - 1],
+          cueChainPx[ci],
           const Color.fromRGBO(255, 255, 255, 0.9),
           6,
           4,
@@ -977,11 +1122,16 @@ class TrajectoryPainter extends CustomPainter {
         r(8, dragging: draggingCueAnchorIndex == i),
         cueAn,
       );
-      canvas.drawCircle(
-        cueEnd,
-        r(6, dragging: draggingCueEndIndex == i),
-        Paint()..color = const Color.fromRGBO(210, 240, 255, 0.95),
-      );
+      for (var ci = 0; ci < cueChainPx.length; ci++) {
+        final pt = cueChainPx[ci];
+        final dragging = draggingCueCushionLineIndex == i &&
+            draggingCueCushionSegIndex == ci;
+        canvas.drawCircle(
+          pt,
+          r(6, dragging: dragging),
+          Paint()..color = const Color.fromRGBO(210, 240, 255, 0.95),
+        );
+      }
 
       final objAn = Paint()..color = const Color.fromRGBO(255, 215, 0, 0.98);
       canvas.drawCircle(
@@ -994,13 +1144,6 @@ class TrajectoryPainter extends CustomPainter {
         r(6, dragging: draggingObjEndIndex == i),
         Paint()..color = const Color.fromRGBO(255, 235, 170, 0.95),
       );
-      if (geom.cueHitCushion) {
-        canvas.drawCircle(
-          cueBounceEnd,
-          r(6, dragging: draggingCueBounceEndIndex == i),
-          Paint()..color = const Color.fromRGBO(210, 240, 255, 0.95),
-        );
-      }
       if (geom.objHitCushion) {
         canvas.drawCircle(
           objBounceEnd,
@@ -1030,6 +1173,8 @@ class TrajectoryPainter extends CustomPainter {
       cueStartOverrideNorm: line.cueStartOverride,
       cueEndOverrideNorm: line.cueEndOverride,
       cueBounceEndOverrideNorm: line.cueBounceEndOverride,
+      cueBounce2EndOverrideNorm: line.cueBounce2EndOverride,
+      cueBounce3EndOverrideNorm: line.cueBounce3EndOverride,
       objEndOverrideNorm: line.objEndOverride,
       objBounceEndOverrideNorm: line.objBounceEndOverride,
     );
@@ -1216,8 +1361,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   int? _dragContactIdx;
   int? _dragCueAIdx;
   int? _dragObjAIdx;
-  int? _dragCueEndIdx;
-  int? _dragCueBounceEndIdx;
+  int? _dragCueCushionLineIdx;
+  int? _dragCueCushionSegIdx;
   int? _dragObjEndIdx;
   int? _dragObjBounceEndIdx;
 
@@ -1246,6 +1391,22 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     if (_spAxisBallId != null) {
       _status = 'ドラッグで移動 / 縦横線で微調整 / 2回タップでトレイへ';
     }
+  }
+
+  static const _trajDrawStatus = '軌道モード: 手玉（●）→的球の順にタップ';
+
+  void _resetTrajDrawState({bool keepTrajMode = true}) {
+    _selCueId = 0;
+    _trajEditMode = false;
+    if (keepTrajMode) _trajMode = true;
+    _status = _trajDrawStatus;
+  }
+
+  void _clearAllTrajectories() {
+    setState(() {
+      _lines.clear();
+      _resetTrajDrawState();
+    });
   }
 
   String get _trajEditStatus => _isPhone
@@ -1467,6 +1628,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         cueStartOverrideNorm: last.cueStartOverride,
         cueEndOverrideNorm: last.cueEndOverride,
         cueBounceEndOverrideNorm: last.cueBounceEndOverride,
+        cueBounce2EndOverrideNorm: last.cueBounce2EndOverride,
+        cueBounce3EndOverrideNorm: last.cueBounce3EndOverride,
         objEndOverrideNorm: last.objEndOverride,
         objBounceEndOverrideNorm: last.objBounceEndOverride,
       );
@@ -1519,7 +1682,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       line.cueAnchor = Offset.zero;
       line.objAnchor = Offset.zero;
       line.cueEndOverride = null;
-      line.cueBounceEndOverride = null;
+      line.clearCueBounceOverrides();
       line.objEndOverride = null;
       line.objBounceEndOverride = null;
       setState(() {});
@@ -1531,7 +1694,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       final ox = (nx - line.contact.dx).clamp(-0.5, 0.5);
       final oy = (ny - line.contact.dy).clamp(-0.5, 0.5);
       line.cueAnchor = Offset(ox, oy);
-      line.cueBounceEndOverride = null;
+      line.clearCueBounceOverrides();
       setState(() {});
       return;
     }
@@ -1546,17 +1709,24 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       return;
     }
 
-    if (_dragCueEndIdx != null) {
-      final line = _lines[_dragCueEndIdx!];
-      line.cueEndOverride = _snapTrajNormToCushion(Offset(nx, ny));
-      line.cueBounceEndOverride = null;
-      setState(() {});
-      return;
-    }
-
-    if (_dragCueBounceEndIdx != null) {
-      final line = _lines[_dragCueBounceEndIdx!];
-      line.cueBounceEndOverride = Offset(nx, ny);
+    if (_dragCueCushionLineIdx != null && _dragCueCushionSegIdx != null) {
+      final line = _lines[_dragCueCushionLineIdx!];
+      final seg = _dragCueCushionSegIdx!;
+      final raw = Offset(nx, ny);
+      final norm = seg == 0 ? _snapTrajNormToCushion(raw) : raw;
+      switch (seg) {
+        case 0:
+          line.cueEndOverride = norm;
+          line.clearCueBounceOverrides();
+        case 1:
+          line.cueBounceEndOverride = norm;
+          line.clearCueBounceOverridesFrom(1);
+        case 2:
+          line.cueBounce2EndOverride = norm;
+          line.clearCueBounceOverridesFrom(2);
+        case 3:
+          line.cueBounce3EndOverride = norm;
+      }
       setState(() {});
       return;
     }
@@ -1582,8 +1752,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     _dragContactIdx = null;
     _dragCueAIdx = null;
     _dragObjAIdx = null;
-    _dragCueEndIdx = null;
-    _dragCueBounceEndIdx = null;
+    _dragCueCushionLineIdx = null;
+    _dragCueCushionSegIdx = null;
     _dragObjEndIdx = null;
     _dragObjBounceEndIdx = null;
     final felt = _felt;
@@ -1611,6 +1781,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         cueStartOverrideNorm: line.cueStartOverride,
         cueEndOverrideNorm: line.cueEndOverride,
         cueBounceEndOverrideNorm: line.cueBounceEndOverride,
+        cueBounce2EndOverrideNorm: line.cueBounce2EndOverride,
+        cueBounce3EndOverrideNorm: line.cueBounce3EndOverride,
         objEndOverrideNorm: line.objEndOverride,
         objBounceEndOverrideNorm: line.objBounceEndOverride,
       );
@@ -1626,14 +1798,14 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         felt.left + geom.objControl.dx * felt.width,
         felt.top + geom.objControl.dy * felt.height,
       );
-      final ce = Offset(
-        felt.left + geom.cueEnd.dx * felt.width,
-        felt.top + geom.cueEnd.dy * felt.height,
-      );
-      final cbe = Offset(
-        felt.left + geom.cueBounceEnd.dx * felt.width,
-        felt.top + geom.cueBounceEnd.dy * felt.height,
-      );
+      final cueChainPx = geom.cueCushionChain
+          .map(
+            (n) => Offset(
+              felt.left + n.dx * felt.width,
+              felt.top + n.dy * felt.height,
+            ),
+          )
+          .toList(growable: false);
       final oe = Offset(
         felt.left + geom.objEnd.dx * felt.width,
         felt.top + geom.objEnd.dy * felt.height,
@@ -1663,19 +1835,17 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         });
         return;
       }
-      if ((local - ce).distance < hitEnd) {
-        setState(() {
-          _dragCueEndIdx = i;
-          _status = '手球の終点（白丸）を調整中';
-        });
-        return;
-      }
-      if (geom.cueHitCushion && (local - cbe).distance < hitEnd) {
-        setState(() {
-          _dragCueBounceEndIdx = i;
-          _status = '手球のクッション後終点を調整中';
-        });
-        return;
+      for (var ci = cueChainPx.length - 1; ci >= 0; ci--) {
+        if ((local - cueChainPx[ci]).distance < hitEnd) {
+          setState(() {
+            _dragCueCushionLineIdx = i;
+            _dragCueCushionSegIdx = ci;
+            _status = ci == 0
+                ? '手球の終点（白丸）を調整中'
+                : '手球のクッション後終点（${ci}点目）を調整中';
+          });
+          return;
+        }
       }
       if ((local - oe).distance < hitEnd) {
         setState(() {
@@ -1721,8 +1891,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     if (_lines.isEmpty) return;
     setState(() {
       _lines.removeLast();
-      _selCueId = null;
-      _status = '直前の軌道を1本取り消しました';
+      _selCueId = _lines.isEmpty ? 0 : null;
+      _status = _lines.isEmpty
+          ? _trajDrawStatus
+          : '連続軌道: 的球をタップで追加 / 手玉タップで新規';
     });
   }
 
@@ -1923,7 +2095,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                     _selCueId = null;
                     _clearPhoneAxisGuides();
                     _status = _trajMode
-                        ? '軌道モード: 手玉（●）→的球の順にタップ'
+                        ? _trajDrawStatus
                         : 'ドラッグで移動 / 380ms以内に2回タップでトレイへ';
                   }),
                   child: const Text('軌道描画'),
@@ -1940,14 +2112,14 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                             _clearPhoneAxisGuides();
                             _status = _trajEditMode
                                 ? _trajEditStatus
-                                : '軌道モード: 手玉（●）→的球の順にタップ';
+                                : _trajDrawStatus;
                           }),
                   child: Text(_trajEditMode ? '点編集中' : '軌道点編集'),
                 ),
                 SizedBox(width: spacing),
                 OutlinedButton(
                   style: buttonStyle,
-                  onPressed: () => setState(_lines.clear),
+                  onPressed: _clearAllTrajectories,
                   child: const Text('軌道消去'),
                 ),
                 SizedBox(width: spacing),
@@ -2196,8 +2368,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
               draggingContactIndex: _dragContactIdx,
               draggingCueAnchorIndex: _dragCueAIdx,
               draggingObjAnchorIndex: _dragObjAIdx,
-              draggingCueEndIndex: _dragCueEndIdx,
-              draggingCueBounceEndIndex: _dragCueBounceEndIdx,
+              draggingCueCushionLineIndex: _dragCueCushionLineIdx,
+              draggingCueCushionSegIndex: _dragCueCushionSegIdx,
               draggingObjEndIndex: _dragObjEndIdx,
               draggingObjBounceEndIndex: _dragObjBounceEndIdx,
             ),
@@ -2232,8 +2404,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
               if (_dragContactIdx != null ||
                   _dragCueAIdx != null ||
                   _dragObjAIdx != null ||
-                  _dragCueEndIdx != null ||
-                  _dragCueBounceEndIdx != null ||
+                  _dragCueCushionLineIdx != null ||
                   _dragObjEndIdx != null ||
                   _dragObjBounceEndIdx != null) {
                 _onTablePanUpdate(e.localPosition);
@@ -2243,8 +2414,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
               _dragContactIdx = null;
               _dragCueAIdx = null;
               _dragObjAIdx = null;
-              _dragCueEndIdx = null;
-              _dragCueBounceEndIdx = null;
+              _dragCueCushionLineIdx = null;
+              _dragCueCushionSegIdx = null;
               _dragObjEndIdx = null;
               _dragObjBounceEndIdx = null;
               if (_trajEditMode) {
@@ -2255,8 +2426,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
               _dragContactIdx = null;
               _dragCueAIdx = null;
               _dragObjAIdx = null;
-              _dragCueEndIdx = null;
-              _dragCueBounceEndIdx = null;
+              _dragCueCushionLineIdx = null;
+              _dragCueCushionSegIdx = null;
               _dragObjEndIdx = null;
               _dragObjBounceEndIdx = null;
               if (_trajEditMode) {

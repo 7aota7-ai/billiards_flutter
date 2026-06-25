@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'models/detected_ball_layout.dart';
 import 'screens/ball_layout_editor_screen.dart';
+import 'screens/ball_photo_import_screen.dart';
 import 'screens/bowlard_record_screen.dart';
 import 'screens/count_nine_screen.dart';
 import 'screens/five_nine_screen.dart';
@@ -46,6 +48,12 @@ class BilliardsApp extends StatelessWidget {
             return MaterialPageRoute<void>(
               settings: const RouteSettings(name: '/layout'),
               builder: (_) => const BallLayoutEditorScreen(),
+            );
+          // 仮ルート: 写真読込（配置エディタ統合前の単体テスト用）
+          case '/photo-import':
+            return MaterialPageRoute<DetectedBallLayout>(
+              settings: const RouteSettings(name: '/photo-import'),
+              builder: (_) => const BallPhotoImportScreen(),
             );
           case '/bowlard':
             return MaterialPageRoute<void>(
@@ -109,12 +117,22 @@ class BilliardsApp extends StatelessWidget {
 }
 
 String _normalizeInitialRoute() {
-  final path = Uri.base.path.trim();
+  var path = Uri.base.path.trim();
+  if (path.endsWith('/')) {
+    path = path.substring(0, path.length - 1);
+  }
+  // GitHub Pages プロジェクトサイト: /billiards_flutter/layout → /layout
+  const repoPrefix = '/billiards_flutter';
+  if (path.startsWith(repoPrefix)) {
+    path = path.substring(repoPrefix.length);
+    if (path.isEmpty) path = '/';
+  }
   if (path.isEmpty || path == '/') return '/setup';
   const allowed = {
     '/setup',
     '/scoreboard',
     '/layout',
+    '/photo-import',
     '/bowlard',
     '/count-nine',
     '/five-nine',
