@@ -1698,9 +1698,11 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           _buildTopControls(dense: true, showModeSelector: false),
           const SizedBox(height: 6),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-              child: _buildPhoneZoomableTable(aspectRatio: 2.0),
+            child: ClipRect(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                child: _buildPhoneZoomableTable(aspectRatio: 2.0),
+              ),
             ),
           ),
           _buildBottomControls(context, phoneLayout: true),
@@ -1731,9 +1733,11 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         const SizedBox(height: 4),
         _buildTopControls(dense: true, showModeSelector: false),
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
-            child: _buildPhoneZoomableTable(aspectRatio: 0.5),
+          child: ClipRect(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+              child: _buildPhoneZoomableTable(aspectRatio: 0.5),
+            ),
           ),
         ),
         _buildBottomControls(context, phoneLayout: true),
@@ -1741,7 +1745,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
-  /// SP: ピンチズーム・パン対応。軌道点編集時は1本指を点操作に使うためパンを無効化。
+  /// SP: 1×で台全体が収まるサイズ。ピンチで拡大可能。
   Widget _buildPhoneZoomableTable({required double aspectRatio}) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1749,25 +1753,26 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         final maxH = constraints.maxHeight;
         if (maxW <= 0 || maxH <= 0) return const SizedBox.shrink();
 
-        final tableW = maxW;
-        final tableH = tableW / aspectRatio;
+        var tableW = maxW;
+        var tableH = tableW / aspectRatio;
+        if (tableH > maxH) {
+          tableH = maxH;
+          tableW = tableH * aspectRatio;
+        }
+
         final lockPan = _trajEditMode;
-        return SizedBox(
-          width: maxW,
-          height: maxH,
-          child: InteractiveViewer(
-            minScale: 1.0,
-            maxScale: 4.5,
-            constrained: false,
-            boundaryMargin: const EdgeInsets.all(24),
-            alignment: Alignment.topCenter,
-            panEnabled: !lockPan,
-            scaleEnabled: true,
-            child: SizedBox(
-              width: tableW,
-              height: tableH,
-              child: _buildTableCanvas(Size(tableW, tableH)),
-            ),
+        return InteractiveViewer(
+          minScale: 1.0,
+          maxScale: 4.5,
+          constrained: true,
+          boundaryMargin: const EdgeInsets.all(8),
+          alignment: Alignment.center,
+          panEnabled: !lockPan,
+          scaleEnabled: true,
+          child: SizedBox(
+            width: tableW,
+            height: tableH,
+            child: _buildTableCanvas(Size(tableW, tableH)),
           ),
         );
       },
