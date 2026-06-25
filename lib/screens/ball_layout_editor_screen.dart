@@ -1772,7 +1772,11 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         final fitScale = math.min(1.0, maxH / tableH);
         _applyPhoneZoomFit(maxW, maxH, aspectRatio);
 
-        final lockPan = _trajEditMode;
+        final lockPan = _trajEditMode ||
+            _spAxisBallId != null ||
+            _dragBallId != null ||
+            _dragAxisX ||
+            _dragAxisY;
         return InteractiveViewer(
           transformationController: _phoneZoomCtrl,
           minScale: fitScale,
@@ -2190,9 +2194,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             },
           ),
         ),
-        ..._balls.where((b) => b.onTable).map((b) => _ballPositioned(b)),
         if (_isPhone && _spAxisBallId != null && !_trajMode)
           _buildPhoneAxisGuides(),
+        ..._balls.where((b) => b.onTable).map((b) => _ballPositioned(b)),
       ],
     );
   }
