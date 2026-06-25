@@ -66,5 +66,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>ビリヤード台の配置を撮影して球位置を読み取るためにカメラを使用します。</string>
 </dict>
 </plist>

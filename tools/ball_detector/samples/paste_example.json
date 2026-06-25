@@ -1,0 +1,16 @@
+{
+  "balls": [
+    { "id": null, "x": 0.312, "y": 0.548, "color": "yellow" },
+    { "id": null, "x": 0.697, "y": 0.241, "color": "white" },
+    { "id": null, "x": 0.159, "y": 0.271, "color": "purple" },
+    { "id": null, "x": 0.858, "y": 0.483, "color": "orange" },
+    { "id": null, "x": 0.380, "y": 0.563, "color": "red" },
+    { "id": null, "x": 0.794, "y": 0.451, "color": "black" },
+    { "id": null, "x": 0.450, "y": 0.098, "color": "blue" },
+    { "id": null, "x": 0.776, "y": 0.397, "color": "maroon" }
+  ],
+  "meta": {
+    "source_image": "paste_example.json",
+    "ball_count": 8
+  }
+}

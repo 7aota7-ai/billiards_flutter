@@ -1,0 +1,102 @@
+{
+  "balls": [
+    {
+      "id": null,
+      "x": 0.7765,
+      "y": 0.397,
+      "color": "white"
+    },
+    {
+      "id": null,
+      "x": 0.3815,
+      "y": 0.635,
+      "color": "blue"
+    },
+    {
+      "id": null,
+      "x": 0.38,
+      "y": 0.563,
+      "color": "blue"
+    },
+    {
+      "id": null,
+      "x": 0.697,
+      "y": 0.241,
+      "color": "blue"
+    },
+    {
+      "id": null,
+      "x": 0.958,
+      "y": 0.415,
+      "color": "black"
+    },
+    {
+      "id": null,
+      "x": 0.4025,
+      "y": 0.505,
+      "color": "blue"
+    },
+    {
+      "id": null,
+      "x": 0.9295,
+      "y": 0.433,
+      "color": "maroon"
+    },
+    {
+      "id": null,
+      "x": 0.7625,
+      "y": 0.491,
+      "color": "blue"
+    },
+    {
+      "id": null,
+      "x": 0.7955,
+      "y": 0.473,
+      "color": "white"
+    },
+    {
+      "id": null,
+      "x": 0.91,
+      "y": 0.101,
+      "color": "green"
+    },
+    {
+      "id": null,
+      "x": 0.1595,
+      "y": 0.271,
+      "color": "purple"
+    }
+  ],
+  "meta": {
+    "source_image": "table_photo.png",
+    "warp_size": [
+      2000,
+      1000
+    ],
+    "corners": [
+      [
+        195.0,
+        155.0
+      ],
+      [
+        575.0,
+        155.0
+      ],
+      [
+        685.0,
+        885.0
+      ],
+      [
+        85.0,
+        885.0
+      ]
+    ],
+    "corner_order": [
+      "top-left",
+      "top-right",
+      "bottom-right",
+      "bottom-left"
+    ],
+    "ball_count": 11
+  }
+}

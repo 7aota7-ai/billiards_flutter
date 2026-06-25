@@ -538,6 +538,14 @@ class _SetupScreenState extends State<SetupScreen> {
     await Navigator.of(context).pushNamed<void>('/layout');
   }
 
+  Future<void> _openPhotoImport() async {
+    await Navigator.of(context).pushNamed<void>('/photo-import');
+  }
+
+  Future<void> _openCameraCapture() async {
+    await Navigator.of(context).pushNamed<void>('/camera-capture');
+  }
+
   Future<void> _openFiveNineDraft() async {
     await Navigator.of(context).pushNamed<void>('/five-nine');
   }
@@ -603,6 +611,10 @@ class _SetupScreenState extends State<SetupScreen> {
                 await _openBowlardRecord();
               } else if (value == 'layout') {
                 await _openBallLayoutEditor();
+              } else if (value == 'photo_import') {
+                await _openPhotoImport();
+              } else if (value == 'camera_capture') {
+                await _openCameraCapture();
               } else if (value == 'five9') {
                 await _openFiveNineDraft();
               } else if (value == 'count9') {
@@ -617,6 +629,14 @@ class _SetupScreenState extends State<SetupScreen> {
               PopupMenuItem<String>(
                 value: 'layout',
                 child: Text('配置登録エディタ'),
+              ),
+              PopupMenuItem<String>(
+                value: 'photo_import',
+                child: Text('写真から読込'),
+              ),
+              PopupMenuItem<String>(
+                value: 'camera_capture',
+                child: Text('配置を取る（カメラ）'),
               ),
               PopupMenuItem<String>(
                 value: 'count9',

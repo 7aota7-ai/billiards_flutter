@@ -5,6 +5,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/detected_ball_layout.dart';
+import '../services/ball_detection_service.dart';
+import '../services/pending_photo_import_store.dart';
 import '../theme/apple_theme.dart';
 
 // --- Game / ball models ---
@@ -1451,6 +1454,12 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         ..clear()
         ..addAll(init.lines.map((l) => l.copy()));
     }
+    final pending = PendingPhotoImportStore.take();
+    if (pending != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _applyDetectedLayout(pending);
+      });
+    }
   }
 
   @override
@@ -1523,6 +1532,58 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         }).toList();
       }
       if (resetPositions) _lines.clear();
+    });
+  }
+
+  /// 写真検出結果を台面上に仮配置（id は色ヒントから推定、要ユーザー確認）。
+  void _applyDetectedLayout(DetectedBallLayout layout) {
+    final usedIds = <int>{};
+    final assignments = List<int?>.filled(layout.balls.length, null);
+
+    for (var i = 0; i < layout.balls.length; i++) {
+      final detected = layout.balls[i];
+      var id = detected.id ?? suggestBallId(detected.color, allowCue: true);
+      if (id != null && usedIds.contains(id)) id = null;
+      if (id != null) {
+        usedIds.add(id);
+        assignments[i] = id;
+      }
+    }
+
+    var nextId = 1;
+    for (var i = 0; i < layout.balls.length; i++) {
+      if (assignments[i] != null) continue;
+      while (nextId <= _mode.totalBalls && usedIds.contains(nextId)) {
+        nextId++;
+      }
+      if (nextId > _mode.totalBalls) break;
+      assignments[i] = nextId;
+      usedIds.add(nextId);
+      nextId++;
+    }
+
+    var placed = 0;
+    setState(() {
+      for (final b in _balls) {
+        b.onTable = false;
+      }
+      for (var i = 0; i < layout.balls.length; i++) {
+        final id = assignments[i];
+        if (id == null) continue;
+        final detected = layout.balls[i];
+        final ball = _balls.where((b) => b.def.id == id).firstOrNull;
+        if (ball == null) continue;
+        ball
+          ..x = detected.x.clamp(0.0, 1.0)
+          ..y = detected.y.clamp(0.0, 1.0)
+          ..onTable = true;
+        placed++;
+      }
+      _lines.clear();
+      _trajMode = false;
+      _trajEditMode = false;
+      _clearPhoneAxisGuides();
+      _status = '写真から $placed 球を配置（色ヒントで仮割当・要確認）';
     });
   }
 
@@ -1927,6 +1988,14 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
+  Future<void> _openPhotoImport() async {
+    await Navigator.of(context).pushNamed<void>('/photo-import');
+  }
+
+  Future<void> _openCameraCapture() async {
+    await Navigator.of(context).pushNamed<void>('/camera-capture');
+  }
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
@@ -2143,6 +2212,18 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                   style: buttonStyle,
                   onPressed: _lines.isEmpty ? null : _undoLastTrajectory,
                   child: const Text('軌道修正'),
+                ),
+                SizedBox(width: spacing),
+                OutlinedButton(
+                  style: buttonStyle,
+                  onPressed: _openCameraCapture,
+                  child: const Text('配置を取る'),
+                ),
+                SizedBox(width: spacing),
+                OutlinedButton(
+                  style: buttonStyle,
+                  onPressed: _openPhotoImport,
+                  child: const Text('写真から読込'),
                 ),
                 SizedBox(width: spacing),
                 OutlinedButton(
