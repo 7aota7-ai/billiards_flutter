@@ -20,9 +20,9 @@ class TableGuideGeometry {
   ///
   /// Calibrated from hall photos (Jun 2025): 165 cm shooter, ~80 cm table,
   /// seat only 5–60 cm behind the near cushion (cannot step back). With
-  /// camera ~78 cm above the felt, geometry gives ratio ≈ 0.29. Old 0.64
-  /// implied ~4.5 m back (near top-down), which is impossible here.
-  static const farNearWidthRatio = 0.30;
+  /// camera ~78 cm above the felt, geometry gives ratio ≈ 0.29; field check
+  /// nudged to 0.35 because the far rail looked slightly narrow at 0.30.
+  static const farNearWidthRatio = 0.35;
 
   /// Normalized preview positions for TL → TR → BR → BL.
   static const farYNorm = 0.30;
@@ -43,8 +43,8 @@ class TableGuideGeometry {
   /// Portrait table photo — initial felt corners (photo import / browser camera).
   /// Same trapezoid as [guideCornersNormalized] for a typical portrait frame.
   static const defaultPhotoCorners = <Offset>[
-    Offset(0.374, 0.30),
-    Offset(0.626, 0.30),
+    Offset(0.353, 0.30),
+    Offset(0.647, 0.30),
     Offset(0.92, 0.68),
     Offset(0.08, 0.68),
   ];
