@@ -18,6 +18,11 @@ import numpy as np
 WARP_WIDTH = 2000
 WARP_HEIGHT = 1000
 
+# Post-filter defaults (felt interior, dedupe, cap).
+FILTER_EDGE_MARGIN = 0.08
+FILTER_MAX_BALLS = 12
+FILTER_MIN_SEP_FACTOR = 2.3
+
 CORNER_LABELS = ("top-left", "top-right", "bottom-right", "bottom-left")
 
 
@@ -138,8 +143,8 @@ def detect_balls(
     *,
     min_radius: int | None = None,
     max_radius: int | None = None,
-    hough_param2: int = 24,
-    edge_margin: float = 0.03,
+    hough_param2: int = 26,
+    edge_margin: float = 0.06,
 ) -> list[DetectedBall]:
     """Detect balls on a top-down warped felt image."""
     h, w = warped_bgr.shape[:2]
@@ -220,7 +225,102 @@ def detect_balls(
             )
         )
 
-    return _dedupe_balls(detected, min_dist=min_radius * 2.0)
+    return _dedupe_balls(detected, min_dist=min_radius * 2.2)
+
+
+def _ball_quality(ball: DetectedBall) -> float:
+    """Higher = more likely a real ball (size + distance from cushion)."""
+    edge = min(ball.x, 1.0 - ball.x, ball.y, 1.0 - ball.y)
+    return ball.radius_px * (0.35 + edge * 4.0)
+
+
+def filter_detected_balls(
+    balls: list[DetectedBall],
+    warped_bgr: np.ndarray | None = None,
+    *,
+    edge_margin: float = FILTER_EDGE_MARGIN,
+    max_balls: int = FILTER_MAX_BALLS,
+    min_sep_factor: float = FILTER_MIN_SEP_FACTOR,
+) -> tuple[list[DetectedBall], dict[str, Any]]:
+    """
+    Keep felt-interior detections, drop cushion clutter, dedupe by distance, cap count.
+    """
+    if not balls:
+        return balls, {"raw_count": 0, "filter_reasons": {}}
+
+    h, w = (
+        warped_bgr.shape[:2]
+        if warped_bgr is not None
+        else (WARP_HEIGHT, WARP_WIDTH)
+    )
+    non_felt: np.ndarray | None = None
+    if warped_bgr is not None:
+        hsv = cv2.cvtColor(warped_bgr, cv2.COLOR_BGR2HSV)
+        _, non_felt, _ = _cloth_masks(hsv)
+
+    reasons: dict[str, int] = {"edge": 0, "felt": 0, "dedupe": 0, "cap": 0}
+    interior: list[DetectedBall] = []
+
+    for ball in balls:
+        if (
+            ball.x < edge_margin
+            or ball.x > 1.0 - edge_margin
+            or ball.y < edge_margin
+            or ball.y > 1.0 - edge_margin
+        ):
+            reasons["edge"] += 1
+            continue
+
+        if non_felt is not None:
+            cx, cy = int(ball.x * w), int(ball.y * h)
+            if not (0 <= cx < w and 0 <= cy < h):
+                reasons["felt"] += 1
+                continue
+            if non_felt[cy, cx] == 0:
+                reasons["felt"] += 1
+                continue
+            r_px = max(2, int(ball.radius_px))
+            ring_hits = 0
+            ring_total = 0
+            for angle in range(0, 360, 45):
+                rad = math.radians(angle)
+                sx = int(cx + math.cos(rad) * r_px * 0.65)
+                sy = int(cy + math.sin(rad) * r_px * 0.65)
+                if 0 <= sx < w and 0 <= sy < h:
+                    ring_total += 1
+                    if non_felt[sy, sx] != 0:
+                        ring_hits += 1
+            if ring_total > 0 and ring_hits / ring_total < 0.45:
+                reasons["felt"] += 1
+                continue
+
+        interior.append(ball)
+
+    raw_count = len(interior)
+    avg_r = sum(b.radius_px for b in interior) / raw_count if interior else 18.0
+    min_dist = max(14.0, avg_r * min_sep_factor)
+
+    kept: list[DetectedBall] = []
+    for ball in sorted(interior, key=_ball_quality, reverse=True):
+        bx, by = ball.x * w, ball.y * h
+        if any(
+            (bx - k.x * w) ** 2 + (by - k.y * h) ** 2 < min_dist**2 for k in kept
+        ):
+            reasons["dedupe"] += 1
+            continue
+        kept.append(ball)
+
+    if len(kept) > max_balls:
+        reasons["cap"] = len(kept) - max_balls
+        kept = sorted(kept, key=_ball_quality, reverse=True)[:max_balls]
+
+    return kept, {
+        "raw_count": len(balls),
+        "after_interior": raw_count,
+        "filter_reasons": reasons,
+        "max_balls": max_balls,
+        "edge_margin": edge_margin,
+    }
 
 
 def _dedupe_balls(balls: list[DetectedBall], min_dist: float) -> list[DetectedBall]:
@@ -304,7 +404,7 @@ def detect_balls_bare(warped_bgr: np.ndarray) -> list[DetectedBall]:
         if cx < margin or cy < margin or cx > w - margin or cy > h - margin:
             continue
         nx, ny = cx / w, cy / h
-        if nx < 0.04 or nx > 0.96 or ny < 0.04 or ny > 0.96:
+        if nx < 0.06 or nx > 0.94 or ny < 0.06 or ny > 0.94:
             continue
         color = _classify_color(warped_bgr, cx, cy, r)
         if color == "unknown":
@@ -353,6 +453,9 @@ def detect_from_array(
         balls = detect_balls_bare(warped)
         detect_mode = "bare_hough"
 
+    raw_count = len(balls)
+    balls, filter_meta = filter_detected_balls(balls, warped)
+
     hsv = cv2.cvtColor(warped, cv2.COLOR_BGR2HSV)
     _, _, is_blue_cloth = _cloth_masks(hsv)
 
@@ -389,6 +492,8 @@ def detect_from_array(
             "corners_ok": corners_ok,
             "corner_order": list(CORNER_LABELS),
             "ball_count": len(balls),
+            "ball_count_raw": raw_count,
+            "filter": filter_meta,
             "detect_mode": detect_mode,
             "is_blue_cloth": is_blue_cloth,
         },

@@ -1,9 +1,23 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/detected_ball_layout.dart';
+
+/// Result of probing the local detection API.
+class BallDetectionServerStatus {
+  const BallDetectionServerStatus({
+    required this.available,
+    required this.summary,
+    this.detail,
+  });
+
+  final bool available;
+  final String summary;
+  final String? detail;
+}
 
 /// Calls the local OpenCV FastAPI server or parses pasted JSON.
 class BallDetectionService {
@@ -11,15 +25,53 @@ class BallDetectionService {
 
   final String baseUrl;
 
-  Future<bool> isServerAvailable() async {
+  /// GitHub Pages (HTTPS) cannot call the local HTTP API — browser blocks it.
+  static bool get isBlockedByHttpsWeb =>
+      kIsWeb && Uri.base.scheme == 'https';
+
+  static String get httpsWebBlockedDetail =>
+      'GitHub Pages（HTTPS）からは PC の HTTP API に接続できません。\n\n'
+      'スマホで撮影→検出まで行う手順:\n'
+      '1. PC で uvicorn --host 0.0.0.0 --port 8765\n'
+      '2. PC で flutter run -d chrome --web-hostname 0.0.0.0 --web-port 8080\n'
+      '3. スマホで http://PCのIP:8080 を開く（HTTPS の GitHub Pages では不可）\n'
+      '4. 下の API URL を http://PCのIP:8765 に設定';
+
+  Future<BallDetectionServerStatus> checkServer() async {
+    if (isBlockedByHttpsWeb) {
+      return BallDetectionServerStatus(
+        available: false,
+        summary: '検出 API: HTTPS の Web からは接続不可',
+        detail: httpsWebBlockedDetail,
+      );
+    }
     try {
       final res = await http
           .get(Uri.parse('$baseUrl/health'))
           .timeout(const Duration(seconds: 2));
-      return res.statusCode == 200;
+      if (res.statusCode == 200) {
+        return BallDetectionServerStatus(
+          available: true,
+          summary: '検出 API: 接続 OK ($baseUrl)',
+        );
+      }
+      return BallDetectionServerStatus(
+        available: false,
+        summary: '検出 API: 応答異常 (${res.statusCode})',
+        detail: 'tools/ball_detector で uvicorn を起動してください。',
+      );
     } catch (_) {
-      return false;
+      return BallDetectionServerStatus(
+        available: false,
+        summary: '検出 API: 未接続 — CLI JSON 貼り付け可',
+        detail: 'PC で uvicorn server:app --host 127.0.0.1 --port 8765 '
+            'を起動してください。',
+      );
     }
+  }
+
+  Future<bool> isServerAvailable() async {
+    return (await checkServer()).available;
   }
 
   Future<DetectedBallLayout> detectFromBytes({

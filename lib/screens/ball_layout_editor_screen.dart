@@ -118,13 +118,16 @@ class BallTableScale {
   /// Regulation pool ball radius / felt long-side width (≈2.25" Ø on ~100" table).
   static const double regulationRadiusNorm = 0.01125;
 
-  /// Desktop: ~1.8× real. Phone: keep prior ~2.67× for touch targets.
+  /// Desktop: ~3.2× real (1.8× previous). Phone: touch targets.
+  static const double _desktopVisualScale = 1.8 * 1.8;
+
   static double radiusNorm({required bool phone}) =>
-      regulationRadiusNorm * (phone ? 0.03 / regulationRadiusNorm : 1.8);
+      regulationRadiusNorm *
+      (phone ? 0.03 / regulationRadiusNorm : _desktopVisualScale);
 
   static double radiusPx(Rect felt, {required bool phone}) {
     final r = felt.width * radiusNorm(phone: phone);
-    final floor = phone ? 10.5 : 6.0;
+    final floor = phone ? 10.5 : 6.0 * 1.8;
     return math.max(r, floor);
   }
 }
@@ -1512,6 +1515,19 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     });
   }
 
+  double _currentZoomScale() {
+    final m = _phoneZoomCtrl.value.storage;
+    // Uniform scaling only; use X axis as representative.
+    return m[0].abs();
+  }
+
+  void _snapZoomBackToFit(double fitScale) {
+    final current = _currentZoomScale();
+    if (current <= fitScale * 1.03) {
+      _phoneZoomCtrl.value = Matrix4.diagonal3Values(fitScale, fitScale, 1.0);
+    }
+  }
+
   void _applyMode(GameMode m, {required bool resetPositions}) {
     setState(() {
       _mode = m;
@@ -2002,6 +2018,11 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     final isPhone = media.size.shortestSide < 700;
     final usePortraitLayout =
         media.orientation == Orientation.portrait && media.size.width < 700;
+    final body = usePortraitLayout
+        ? _buildPortraitLayout(context)
+        : isPhone
+            ? _buildLandscapeLayout(context, phoneOptimized: true)
+            : _buildDesktopPortraitLayout(context);
     return Scaffold(
       appBar: buildAppleGlassAppBar(
         context,
@@ -2023,10 +2044,79 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: usePortraitLayout
-            ? _buildPortraitLayout(context)
-            : _buildLandscapeLayout(context, phoneOptimized: isPhone),
+      body: SafeArea(child: body),
+    );
+  }
+
+  /// PC: portrait table (near-end view) + ball tray in a right column.
+  Widget _buildDesktopPortraitLayout(BuildContext context) {
+    return Column(
+      children: [
+        const SizedBox(height: 12),
+        _buildTopControls(dense: false),
+        const SizedBox(height: 8),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: ClipRect(
+                    child: _buildPhoneZoomableTable(aspectRatio: 0.5),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _buildDesktopBallTray(),
+              ],
+            ),
+          ),
+        ),
+        _buildBottomControls(
+          context,
+          compactInputs: false,
+          showBallTray: false,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopBallTray() {
+    const trayRadius = 26.0;
+    const itemH = trayRadius * 2 + 10;
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: itemH + 20,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+              child: Text(
+                'ボール',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+                children: [
+                  for (final b in _balls)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Center(
+                        child: _trayBall(b, radius: trayRadius),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2051,6 +2141,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         ],
       );
     }
+    // Fallback for wide short-side devices in landscape (rare).
     return Column(
       children: [
         const SizedBox(height: 12),
@@ -2060,7 +2151,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
             child: Center(
-              child: _buildTableFitted(aspectRatio: 2 / 1),
+              child: _buildTableFitted(aspectRatio: 0.5),
             ),
           ),
         ),
@@ -2114,6 +2205,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           alignment: Alignment.topCenter,
           panEnabled: !lockPan,
           scaleEnabled: true,
+          onInteractionEnd: (_) => _snapZoomBackToFit(fitScale),
           child: SizedBox(
             width: tableW,
             height: tableH,
@@ -2303,6 +2395,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     BuildContext context, {
     bool compactInputs = true,
     bool phoneLayout = false,
+    bool showBallTray = true,
   }) {
     final trayHeight = phoneLayout ? 50.0 : 78.0;
     final trayRadius = phoneLayout ? 20.0 : 28.0;
@@ -2326,14 +2419,16 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                 ),
           ),
         ),
-        SizedBox(
-          height: trayHeight,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: phoneLayout ? 6 : 8),
-            children: _balls.map((b) => _trayBall(b, radius: trayRadius)).toList(),
+        if (showBallTray)
+          SizedBox(
+            height: trayHeight,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: phoneLayout ? 6 : 8),
+              children:
+                  _balls.map((b) => _trayBall(b, radius: trayRadius)).toList(),
+            ),
           ),
-        ),
         if (phoneLayout)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),

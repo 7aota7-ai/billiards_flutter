@@ -17,14 +17,26 @@ pip install -r requirements.txt
 
 | 環境 | カメラ | App Store |
 |------|--------|-----------|
-| **Web URL（HTTPS）** | ✅ スマホブラウザで可（カメラ許可） | **不要** |
+| **Web URL（HTTPS）・スマホ** | ✅ プレビュー＋黄色ガイド | **不要** |
+| **Web URL・PC ブラウザ** | ❌ プレビュー非対応（**写真から読込**を使用） | **不要** |
 | **PWA / ホーム画面追加** | ✅ 同上 | **不要** |
 | **ネイティブ APK / IPA** | ✅ | Store 公開は任意（ sideload / TestFlight 可） |
 
 - **App Store 登録は必須ではありません。** 今まで通り GitHub Pages の URL から開いても、スマホブラウザでカメラが使えます。
 - Web では最初に **「カメラプレビューを起動」** をタップ（ブラウザのユーザー操作が必要）。
 - プレビューが動かない場合は **「ブラウザカメラで撮影」**（OS 標準カメラ UI）を試してください。
-- **球検出 API** は PC 上の `127.0.0.1:8765` のため、スマホ単体では届きません（同一 Wi‑Fi + PC IP 設定が別途必要）。
+- **球検出 API** は PC 上で動作。スマホから使う手順は下記「スマホで撮影→検出」。
+
+### スマホで撮影 → 検出（同一 Wi-Fi）
+
+GitHub Pages（HTTPS）からは HTTP API に届きません。**http://PCのIP:ポート** でアプリを開いてください。
+
+1. PC: `uvicorn server:app --host 0.0.0.0 --port 8765`
+2. PC: `flutter run -d chrome --web-hostname 0.0.0.0 --web-port 8080`
+3. スマホ: `http://192.168.x.x:8080` を開く
+4. **配置を取る** → API URL を `http://192.168.x.x:8765` → **接続** → 撮影
+
+API 未接続時は撮影後 **写真から読込** に引き継ぎ（4隅はガイド値を自動設定）。
 
 ### その他
 
@@ -35,6 +47,22 @@ pip install -r requirements.txt
 cd tools/ball_detector
 .venv\Scripts\uvicorn.exe server:app --host 127.0.0.1 --port 8765
 ```
+
+### 「API 未接続」になるとき（よくある原因）
+
+| 開き方 | API に繋がる？ |
+|--------|----------------|
+| **GitHub Pages（HTTPS）** | ❌ ブラウザが HTTP の localhost をブロック |
+| **PC で `flutter run -d chrome`（HTTP）** | ✅ |
+| **スマホ Web** | ❌（127.0.0.1 はスマホ自身） |
+
+**ステップ 1（PC で撮影→検出）の正しい手順:**
+
+1. ターミナル A: 上記 uvicorn を起動（閉じない）
+2. ターミナル B: プロジェクト直下で `flutter run -d chrome`
+3. 開いた **http://localhost** のアプリで「撮影して検出」
+
+GitHub Pages の URL のままでは API 接続 OK にはなりません（JSON 貼り付けは可）。
 
 ### ガイド寸法
 
@@ -70,7 +98,17 @@ python detect_balls.py -i samples/table_photo.png --pick-corners -o out/result.j
 python detect_balls.py -i samples/table_photo.png -c corners.json -o out/result.json
 ```
 
-## 出力 JSON
+## 検出フィルタ (v0.1.3)
+
+API / CLI 出力は次の後処理を通します。
+
+1. **フェルト内** — 台布マスク上のみ（中心＋円周サンプル）
+2. **端除外** — 正規化座標で四辺から 8% 以内を除外
+3. **距離で重複除去** — 平均半径 × 2.3 未満の近傍は高スコアのみ残す
+4. **上限 12 個** — クッション付近の誤検出を優先的に落とす
+
+`meta.ball_count_raw` にフィルタ前件数、`meta.filter` に除外内訳があります。
+
 
 **Flutter に貼り付けるときは CLI が出力した JSON をそのまま使ってください。**  
 README の `[...]` などは省略記号で、JSON としては無効です。
@@ -129,7 +167,8 @@ uvicorn server:app --reload --host 0.0.0.0 --port 8765
 
 | 環境 | カメラ | App Store |
 |------|--------|-----------|
-| **Web URL（HTTPS）** | ✅ スマホブラウザで可 | **不要** |
+| **Web URL（HTTPS）・スマホ** | ✅ プレビュー＋黄色ガイド | **不要** |
+| **Web URL・PC ブラウザ** | ❌ **写真から読込** を使用 | **不要** |
 | **PWA / ホーム画面追加** | ✅ 同上 | **不要** |
 | **ネイティブ APK / IPA** | ✅ | Store 公開は任意 |
 

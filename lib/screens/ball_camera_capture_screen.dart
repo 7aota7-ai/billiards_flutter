@@ -6,14 +6,18 @@ import 'package:image_picker/image_picker.dart';
 import '../models/table_guide_geometry.dart';
 import '../services/ball_detection_service.dart';
 import '../services/camera_preview_mapper.dart';
+import '../services/detection_api_settings.dart';
 import '../services/image_bake_service.dart';
+import '../services/pending_capture_store.dart';
 import '../services/pending_photo_import_store.dart';
 import '../theme/apple_theme.dart';
+import '../utils/web_platform.dart';
 
 /// Camera capture with felt trapezoid guide (254×127 cm playing area, near-end view).
 ///
-/// Web (HTTPS): live preview after user taps start (browser requires user gesture).
-/// Fallback: [ImagePicker] opens the device camera on mobile browsers.
+/// Web (HTTPS, smartphone): live preview after user taps start.
+/// Fallback: [ImagePicker] with `capture=environment` on mobile browsers only.
+/// Desktop browsers: use photo import (camera opens a folder dialog here).
 class BallCameraCaptureScreen extends StatefulWidget {
   const BallCameraCaptureScreen({super.key});
 
@@ -22,7 +26,9 @@ class BallCameraCaptureScreen extends StatefulWidget {
 }
 
 class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
-  final _detectionService = BallDetectionService();
+  BallDetectionService _detectionService =
+      BallDetectionService(baseUrl: DetectionApiSettings.defaultUrl);
+  final _apiUrlCtrl = TextEditingController();
   final _previewKey = GlobalKey();
   final _imagePicker = ImagePicker();
 
@@ -33,22 +39,55 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
   String? _error;
   bool _capturing = false;
   bool _serverOk = false;
+  BallDetectionServerStatus _serverStatus = const BallDetectionServerStatus(
+    available: false,
+    summary: '検出 API: 確認中…',
+  );
 
   @override
   void initState() {
     super.initState();
-    if (kIsWeb) {
-      _refreshServerStatus();
-    } else {
+    _initApi();
+    if (!kIsWeb) {
       _initializing = true;
       _init();
     }
   }
 
-  Future<void> _refreshServerStatus() async {
-    final ok = await _detectionService.isServerAvailable();
+  Future<void> _initApi() async {
+    final url = await DetectionApiSettings.loadBaseUrl();
     if (!mounted) return;
-    setState(() => _serverOk = ok);
+    setState(() {
+      _detectionService = BallDetectionService(baseUrl: url);
+      _apiUrlCtrl.text = url;
+    });
+    if (kIsWeb) {
+      await _refreshServerStatus();
+    }
+  }
+
+  Future<void> _saveApiUrl() async {
+    final url = _apiUrlCtrl.text.trim();
+    if (url.isEmpty) return;
+    await DetectionApiSettings.saveBaseUrl(url);
+    final normalized = await DetectionApiSettings.loadBaseUrl();
+    if (!mounted) return;
+    setState(() {
+      _detectionService = BallDetectionService(baseUrl: normalized);
+    });
+    await _refreshServerStatus();
+    if (mounted) {
+      _showSnack(_serverOk ? 'API 接続 OK' : 'API 未接続 — URL を確認');
+    }
+  }
+
+  Future<void> _refreshServerStatus() async {
+    final status = await _detectionService.checkServer();
+    if (!mounted) return;
+    setState(() {
+      _serverStatus = status;
+      _serverOk = status.available;
+    });
   }
 
   Future<void> _startCameraFromUserGesture() async {
@@ -62,7 +101,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
 
   Future<void> _init() async {
     if (!_awaitingWebStart) {
-      _serverOk = await _detectionService.isServerAvailable();
+      await _refreshServerStatus();
     }
     try {
       _cameras = await availableCameras();
@@ -87,8 +126,13 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
 
   String _formatInitError(Object e) {
     if (kIsWeb) {
+      if (isDesktopWeb) {
+        return 'PC ブラウザではライブプレビューが使えないことが多いです。\n'
+            '「写真から読込」でテストするか、スマホ Web で撮影してください。\n\n'
+            '詳細: $e';
+      }
       return 'ライブプレビューを起動できませんでした。\n'
-          '下の「ブラウザカメラで撮影」を試すか、再試行してください。\n\n'
+          '「ブラウザカメラで撮影」を試すか、再試行してください。\n\n'
           '※ HTTPS の URL から開いてください（GitHub Pages は OK）\n'
           '※ ブラウザのカメラ許可が必要です\n\n'
           '詳細: $e';
@@ -155,9 +199,16 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
     required List<List<double>> corners,
   }) async {
     if (!_serverOk) {
+      if (isMobileWeb) {
+        await _handoffToPhotoImport(
+          bytes: bytes,
+          imageSize: imageSize,
+          corners: corners,
+        );
+        return;
+      }
       throw StateError(
-        '検出 API が未接続です。PC で tools/ball_detector の API を起動し、'
-        '同一 Wi‑Fi から PC の IP:8765 へ届く必要があります。',
+        '検出 API が未接続です。PC で tools/ball_detector の API を起動してください。',
       );
     }
     final ySpan = CameraPreviewMapper.cornerYSpan(corners);
@@ -225,9 +276,28 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
     }
   }
 
-  /// Mobile browser fallback when live preview is unavailable.
+  /// Mobile browser only — on desktop Web this opens a folder dialog.
+  Future<void> _handoffToPhotoImport({
+    required Uint8List bytes,
+    required Size imageSize,
+    required List<List<double>> corners,
+  }) async {
+    PendingCaptureStore.set(
+      bytes: bytes,
+      imageSize: imageSize,
+      cornersNormalized: corners,
+    );
+    if (!mounted) return;
+    _showSnack('API 未接続 — 写真から読込へ（4隅はガイド値を引き継ぎ）');
+    await Navigator.of(context).pushReplacementNamed('/photo-import');
+  }
+
   Future<void> _captureViaBrowserPicker() async {
     if (_capturing) return;
+    if (isDesktopWeb) {
+      _showSnack('PC ブラウザではカメラ撮影非対応です。「写真から読込」を使ってください');
+      return;
+    }
     setState(() => _capturing = true);
     try {
       if (kIsWeb && !_serverOk) {
@@ -260,6 +330,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
 
   @override
   void dispose() {
+    _apiUrlCtrl.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -284,7 +355,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
 
   Widget _buildBody() {
     if (_awaitingWebStart) {
-      return _buildWebStartGate();
+      return isDesktopWeb ? _buildDesktopWebGate() : _buildWebStartGate();
     }
     if (_initializing) {
       return const Center(
@@ -292,7 +363,9 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
       );
     }
     if (_error != null) {
-      return _buildErrorPanel(showBrowserPicker: kIsWeb);
+      return _buildErrorPanel(
+        showBrowserPicker: kIsWeb && supportsBrowserCameraCapture,
+      );
     }
 
     final controller = _controller!;
@@ -342,6 +415,59 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
     );
   }
 
+  Widget _buildDesktopWebGate() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.smartphone, color: Colors.white70, size: 56),
+            const SizedBox(height: 16),
+            Text(
+              TableGuideGeometry.specLabel,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 15),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'PC ブラウザ（localhost 含む）では\n'
+              'カメラプレビュー・「ブラウザカメラで撮影」は使えません\n'
+              '（フォルダ選択が開く仕様です）。\n\n'
+              '黄色ガイド付き撮影 → スマホ Web（HTTPS）\n'
+              '球検出テスト → PC の「写真から読込」',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+            ),
+            if (!_serverOk && _serverStatus.detail != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _serverStatus.detail!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.orange.shade200, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () =>
+                  Navigator.of(context).pushReplacementNamed('/photo-import'),
+              icon: const Icon(Icons.photo_library_outlined),
+              label: const Text('写真から読込へ'),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: _startCameraFromUserGesture,
+              child: const Text(
+                'それでもプレビューを試す',
+                style: TextStyle(color: Colors.white54),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildWebStartGate() {
     return Center(
       child: Padding(
@@ -364,7 +490,14 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white70, fontSize: 13),
             ),
-            if (!_serverOk) ...[
+            if (!_serverOk && _serverStatus.detail != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _serverStatus.detail!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.orange.shade200, fontSize: 12),
+              ),
+            ] else if (!_serverOk) ...[
               const SizedBox(height: 12),
               Text(
                 '検出 API 未接続 — 撮影のみ可能（球検出は PC の API が必要）',
@@ -372,23 +505,25 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
                 style: TextStyle(color: Colors.orange.shade200, fontSize: 12),
               ),
             ],
-            const SizedBox(height: 20),
+            _buildApiUrlSection(),
+            const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _startCameraFromUserGesture,
               icon: const Icon(Icons.videocam),
               label: const Text('カメラプレビューを起動'),
             ),
             const SizedBox(height: 10),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.white54),
+            if (supportsBrowserCameraCapture)
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white54),
+                ),
+                onPressed: _capturing ? null : _captureViaBrowserPicker,
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text('ブラウザカメラで撮影'),
               ),
-              onPressed: _capturing ? null : _captureViaBrowserPicker,
-              icon: const Icon(Icons.photo_camera_outlined),
-              label: const Text('ブラウザカメラで撮影'),
-            ),
-            const SizedBox(height: 10),
+            if (supportsBrowserCameraCapture) const SizedBox(height: 10),
             TextButton(
               onPressed: () =>
                   Navigator.of(context).pushReplacementNamed('/photo-import'),
@@ -458,14 +593,77 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
             Text(
               _serverOk
                   ? '黄色枠にフェルト4隅が収まるよう合わせて撮影'
-                  : 'API 未接続 — 撮影のみ（検出には PC の API が必要）',
+                  : _serverStatus.summary,
               style: TextStyle(
                 color: _serverOk ? Colors.white : Colors.orange.shade200,
                 fontSize: 13,
               ),
             ),
+            if (!_serverOk && _serverStatus.detail != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _serverStatus.detail!,
+                  style: TextStyle(
+                    color: Colors.orange.shade100,
+                    fontSize: 11,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            if (isMobileWeb) _buildApiUrlSection(compact: true),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildApiUrlSection({bool compact = false}) {
+    if (!isMobileWeb) return const SizedBox.shrink();
+    return Padding(
+      padding: EdgeInsets.only(top: compact ? 6 : 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '検出 API URL（PC の IP:8765）',
+            style: TextStyle(
+              color: compact ? Colors.white70 : Colors.orange.shade200,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _apiUrlCtrl,
+                  style: TextStyle(
+                    color: compact ? Colors.white : Colors.white,
+                    fontSize: 13,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'http://192.168.0.10:8765',
+                    hintStyle: TextStyle(color: Colors.white38),
+                    filled: true,
+                    fillColor: const Color(0x33FFFFFF),
+                    border: const OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              TextButton(
+                onPressed: _saveApiUrl,
+                child: const Text('接続', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

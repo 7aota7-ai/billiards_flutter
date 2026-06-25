@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from detect_balls import detect_from_array
 
-app = FastAPI(title="Billiards Ball Detector", version="0.1.2")
+app = FastAPI(title="Billiards Ball Detector", version="0.1.3")
 
 LOG_PATH = Path(__file__).resolve().parent / "samples" / "out" / "last_detect.json"
 
@@ -47,7 +47,7 @@ def _log_result(payload: dict) -> None:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "version": "0.1.2"}
+    return {"status": "ok", "version": "0.1.3"}
 
 
 @app.post("/detect")
