@@ -107,6 +107,25 @@ class BallInstance {
   }
 }
 
+// --- Table ball scale ---
+
+class BallTableScale {
+  BallTableScale._();
+
+  /// Regulation pool ball radius / felt long-side width (≈2.25" Ø on ~100" table).
+  static const double regulationRadiusNorm = 0.01125;
+
+  /// Desktop: ~1.8× real. Phone: keep prior ~2.67× for touch targets.
+  static double radiusNorm({required bool phone}) =>
+      regulationRadiusNorm * (phone ? 0.03 / regulationRadiusNorm : 1.8);
+
+  static double radiusPx(Rect felt, {required bool phone}) {
+    final r = felt.width * radiusNorm(phone: phone);
+    final floor = phone ? 10.5 : 6.0;
+    return math.max(r, floor);
+  }
+}
+
 // --- Trajectory ---
 
 class TrajectoryLine {
@@ -265,8 +284,6 @@ class TrajectoryGeometry {
   final Offset objControl;
   final bool skipObjPost;
 
-  static double _brNorm(Rect felt) => felt.width * 0.03;
-
   static Offset _norm(Offset o, Rect felt) =>
       Offset((o.dx - felt.left) / felt.width, (o.dy - felt.top) / felt.height);
 
@@ -290,6 +307,7 @@ class TrajectoryGeometry {
 
   static TrajectoryGeometry compute({
     required Rect felt,
+    required double ballRadiusPx,
     required Offset cueCenterPx,
     required Offset objCenterPx,
     Offset? contactOverrideNorm,
@@ -302,7 +320,7 @@ class TrajectoryGeometry {
     Offset? objBounceEndOverrideNorm,
   }) {
     final feltNorm = _normRect(felt);
-    final br = _brNorm(felt);
+    final br = ballRadiusPx;
     final cueN = _norm(cueCenterPx, felt);
     final objN = _norm(objCenterPx, felt);
     final cueStartPx = cueStartOverrideNorm == null
@@ -734,19 +752,31 @@ class BilliardsTablePainter extends CustomPainter {
 class TrajectoryPainter extends CustomPainter {
   TrajectoryPainter({
     required this.felt,
+    required this.ballRadiusPx,
     required this.lines,
     required this.ballMap,
+    this.editMode = false,
     this.draggingContactIndex,
     this.draggingCueAnchorIndex,
     this.draggingObjAnchorIndex,
+    this.draggingCueEndIndex,
+    this.draggingCueBounceEndIndex,
+    this.draggingObjEndIndex,
+    this.draggingObjBounceEndIndex,
   });
 
   final Rect felt;
+  final double ballRadiusPx;
   final List<TrajectoryLine> lines;
   final Map<int, BallInstance> ballMap;
+  final bool editMode;
   final int? draggingContactIndex;
   final int? draggingCueAnchorIndex;
   final int? draggingObjAnchorIndex;
+  final int? draggingCueEndIndex;
+  final int? draggingCueBounceEndIndex;
+  final int? draggingObjEndIndex;
+  final int? draggingObjBounceEndIndex;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -775,6 +805,7 @@ class TrajectoryPainter extends CustomPainter {
           i > 0 ? _endOfCueShot(lines[i - 1], ballMap, felt) : null;
       final geom = TrajectoryGeometry.compute(
         felt: felt,
+        ballRadiusPx: ballRadiusPx,
         cueCenterPx: Offset(
           felt.left + cue.x * felt.width,
           felt.top + cue.y * felt.height,
@@ -858,11 +889,6 @@ class TrajectoryPainter extends CustomPainter {
           6,
           4,
         );
-        canvas.drawCircle(
-          cueBounceEnd,
-          6,
-          Paint()..color = const Color.fromRGBO(210, 240, 255, 0.95),
-        );
       }
       _quadArrow(
         canvas,
@@ -883,28 +909,51 @@ class TrajectoryPainter extends CustomPainter {
         );
       }
 
+      final handleScale = editMode ? 1.35 : 1.0;
+      double r(double base, {required bool dragging}) =>
+          (dragging ? base * 1.25 : base) * handleScale;
+
       final cpPaint = Paint()..color = const Color.fromRGBO(255, 70, 70, 0.95);
-      canvas.drawCircle(contact, draggingContactIndex == i ? 9 : 7, cpPaint);
+      canvas.drawCircle(
+        contact,
+        r(7, dragging: draggingContactIndex == i),
+        cpPaint,
+      );
 
       final cueAn = Paint()..color = const Color.fromRGBO(140, 255, 90, 0.95);
-      canvas.drawCircle(cueCtrl, draggingCueAnchorIndex == i ? 10 : 8, cueAn);
+      canvas.drawCircle(
+        cueCtrl,
+        r(8, dragging: draggingCueAnchorIndex == i),
+        cueAn,
+      );
       canvas.drawCircle(
         cueEnd,
-        6,
+        r(6, dragging: draggingCueEndIndex == i),
         Paint()..color = const Color.fromRGBO(210, 240, 255, 0.95),
       );
 
       final objAn = Paint()..color = const Color.fromRGBO(255, 215, 0, 0.98);
-      canvas.drawCircle(objCtrl, draggingObjAnchorIndex == i ? 10 : 8, objAn);
+      canvas.drawCircle(
+        objCtrl,
+        r(8, dragging: draggingObjAnchorIndex == i),
+        objAn,
+      );
       canvas.drawCircle(
         objEnd,
-        6,
+        r(6, dragging: draggingObjEndIndex == i),
         Paint()..color = const Color.fromRGBO(255, 235, 170, 0.95),
       );
+      if (geom.cueHitCushion) {
+        canvas.drawCircle(
+          cueBounceEnd,
+          r(6, dragging: draggingCueBounceEndIndex == i),
+          Paint()..color = const Color.fromRGBO(210, 240, 255, 0.95),
+        );
+      }
       if (geom.objHitCushion) {
         canvas.drawCircle(
           objBounceEnd,
-          6,
+          r(6, dragging: draggingObjBounceEndIndex == i),
           Paint()..color = const Color.fromRGBO(255, 220, 120, 0.95),
         );
       }
@@ -919,6 +968,7 @@ class TrajectoryPainter extends CustomPainter {
     if (cue == null || obj == null) return null;
     final geom = TrajectoryGeometry.compute(
       felt: felt,
+      ballRadiusPx: ballRadiusPx,
       cueCenterPx: Offset(
           felt.left + cue.x * felt.width, felt.top + cue.y * felt.height),
       objCenterPx: Offset(
@@ -1082,11 +1132,6 @@ class SavedBallLayout {
 
 // --- Screens ---
 
-enum _PhoneAxisSelection {
-  x,
-  y,
-}
-
 class BallLayoutEditorScreen extends StatefulWidget {
   const BallLayoutEditorScreen({
     super.key,
@@ -1129,10 +1174,26 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   int? _spAxisBallId;
   bool _dragAxisX = false;
   bool _dragAxisY = false;
-  _PhoneAxisSelection? _selectedPhoneAxis;
 
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
+
+  bool get _isPhone => MediaQuery.of(context).size.shortestSide < 700;
+
+  void _clearPhoneAxisGuides() {
+    _spAxisBallId = null;
+    _dragAxisX = false;
+    _dragAxisY = false;
+  }
+
+  void _setPhoneAxisStatus() {
+    if (_spAxisBallId != null) {
+      _status = '縦線で上下・横線で左右にドラッグして位置を調整';
+    }
+  }
+
+  String get _trajEditStatus =>
+      '軌道点編集: 赤=接触点 / 緑=手球曲率 / 黄=的球曲率 / 白・黄丸=終点をドラッグ';
 
   bool _isNearBallCenter(Offset p, BallInstance b, double thresholdPx) {
     final c = Offset(
@@ -1190,9 +1251,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
   double _ballRadiusPx() {
     if (_felt == Rect.zero) return 8;
-    final isPhone = MediaQuery.of(context).size.shortestSide < 700;
-    final minRadius = isPhone ? 10.5 : 8.0;
-    return math.max(_felt.width * 0.03, minRadius);
+    return BallTableScale.radiusPx(_felt, phone: _isPhone);
   }
 
   void _placeBallRandomOnTable(BallInstance b) {
@@ -1210,26 +1269,25 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       b.onTable = false;
       _lastTap.remove(b.def.id);
       if (_spAxisBallId == b.def.id) {
-        _spAxisBallId = null;
-        _selectedPhoneAxis = null;
+        _clearPhoneAxisGuides();
       }
       setState(() => _status = 'トレイに戻しました');
       return;
     }
     if (_trajMode) {
       if (_trajEditMode) {
-        setState(() => _status = '軌道点編集モード: 点をドラッグして調整');
+        setState(() => _status = _trajEditStatus);
         return;
       }
       if (b.def.id == 0) {
         setState(() {
           _selCueId = 0;
-          _status = '的球をタップ';
+          _status = '的球をタップして軌道を追加';
         });
       } else if (_selCueId == null && _lines.isNotEmpty) {
         _addTrajectoryLine(0, b.def.id);
         setState(() {
-          _status = '連続軌道を追加しました';
+          _status = '連続軌道を追加しました（手玉→的球で続けられます）';
         });
       } else if (_selCueId == 0) {
         _addTrajectoryLine(0, b.def.id);
@@ -1240,13 +1298,13 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       }
       return;
     }
-    final isPhone = MediaQuery.of(context).size.shortestSide < 700;
     _dragBallId = b.def.id;
-    if (isPhone) {
+    if (_isPhone) {
       _spAxisBallId = b.def.id;
-      _selectedPhoneAxis = null;
       _dragAxisX = false;
       _dragAxisY = false;
+      setState(_setPhoneAxisStatus);
+      return;
     }
   }
 
@@ -1255,8 +1313,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     final obj = _balls.firstWhere((x) => x.def.id == objId);
     final felt = _felt;
     if (felt == Rect.zero) return;
+    final br = _ballRadiusPx();
     final geom = TrajectoryGeometry.compute(
       felt: felt,
+      ballRadiusPx: br,
       cueCenterPx: Offset(
           felt.left + cue.x * felt.width, felt.top + cue.y * felt.height),
       objCenterPx: Offset(
@@ -1271,6 +1331,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       final last = _lines.last;
       final gLast = TrajectoryGeometry.compute(
         felt: felt,
+        ballRadiusPx: br,
         cueCenterPx: Offset(
           felt.left +
               _balls.firstWhere((e) => e.def.id == last.cueBallId).x *
@@ -1325,6 +1386,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
     if (_dragBallId != null) {
       final b = _balls.firstWhere((e) => e.def.id == _dragBallId);
+      if (_isPhone && _spAxisBallId == b.def.id) {
+        setState(() {});
+        return;
+      }
       b.x = nx;
       b.y = ny;
       b.onTable = true;
@@ -1337,7 +1402,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       final obj = _balls.firstWhere((e) => e.def.id == line.objBallId);
       final centerObj = Offset(obj.x, obj.y);
       final surf = Offset(nx, ny) - centerObj;
-      final brN = _ballRadiusPx() / math.min(_felt.width, _felt.height);
+      final brN = _ballRadiusPx() / _felt.width;
       final contactRadiusN = (brN * 2).clamp(0.012, 0.24);
       final dir =
           surf.distance < 1e-9 ? const Offset(0, -1) : surf / surf.distance;
@@ -1409,16 +1474,17 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     _dragObjEndIdx = null;
     _dragObjBounceEndIdx = null;
     final felt = _felt;
-    final isPhone = MediaQuery.of(context).size.shortestSide < 700;
-    final hitContact = isPhone ? 24.0 : 14.0;
-    final hitAnchor = isPhone ? 28.0 : 16.0;
-    final hitEnd = isPhone ? 24.0 : 14.0;
+    final br = _ballRadiusPx();
+    final hitContact = _isPhone ? 32.0 : 14.0;
+    final hitAnchor = _isPhone ? 36.0 : 16.0;
+    final hitEnd = _isPhone ? 32.0 : 14.0;
     for (var i = 0; i < _lines.length; i++) {
       final line = _lines[i];
       final cue = _balls.firstWhere((e) => e.def.id == line.cueBallId);
       final obj = _balls.firstWhere((e) => e.def.id == line.objBallId);
       final geom = TrajectoryGeometry.compute(
         felt: felt,
+        ballRadiusPx: br,
         cueCenterPx: Offset(
             felt.left + cue.x * felt.width, felt.top + cue.y * felt.height),
         objCenterPx: Offset(
@@ -1461,31 +1527,52 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         felt.top + geom.objBounceEnd.dy * felt.height,
       );
       if ((local - c).distance < hitContact) {
-        _dragContactIdx = i;
+        setState(() {
+          _dragContactIdx = i;
+          _status = '接触点（赤丸）を調整中';
+        });
         return;
       }
       if ((local - cc).distance < hitAnchor) {
-        _dragCueAIdx = i;
+        setState(() {
+          _dragCueAIdx = i;
+          _status = '手球の曲率（緑丸）を調整中';
+        });
         return;
       }
       if ((local - oc).distance < hitAnchor) {
-        _dragObjAIdx = i;
+        setState(() {
+          _dragObjAIdx = i;
+          _status = '的球の曲率（黄丸）を調整中';
+        });
         return;
       }
       if ((local - ce).distance < hitEnd) {
-        _dragCueEndIdx = i;
+        setState(() {
+          _dragCueEndIdx = i;
+          _status = '手球の終点（白丸）を調整中';
+        });
         return;
       }
       if (geom.cueHitCushion && (local - cbe).distance < hitEnd) {
-        _dragCueBounceEndIdx = i;
+        setState(() {
+          _dragCueBounceEndIdx = i;
+          _status = '手球のクッション後終点を調整中';
+        });
         return;
       }
       if ((local - oe).distance < hitEnd) {
-        _dragObjEndIdx = i;
+        setState(() {
+          _dragObjEndIdx = i;
+          _status = '的球の終点（黄丸）を調整中';
+        });
         return;
       }
       if (geom.objHitCushion && (local - obe).distance < hitEnd) {
-        _dragObjBounceEndIdx = i;
+        setState(() {
+          _dragObjBounceEndIdx = i;
+          _status = '的球のクッション後終点を調整中';
+        });
         return;
       }
     }
@@ -1711,8 +1798,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                     _trajMode = !_trajMode;
                     _trajEditMode = false;
                     _selCueId = null;
-                    _spAxisBallId = null;
-                    _status = _trajMode ? '軌道モード: 手玉→的球の順にタップ' : 'ドラッグで移動';
+                    _clearPhoneAxisGuides();
+                    _status = _trajMode
+                        ? '軌道モード: 手玉（●）→的球の順にタップ'
+                        : 'ドラッグで移動 / 380ms以内に2回タップでトレイへ';
                   }),
                   child: const Text('軌道描画'),
                 ),
@@ -1725,9 +1814,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                             _trajMode = true;
                             _trajEditMode = !_trajEditMode;
                             _selCueId = null;
+                            _clearPhoneAxisGuides();
                             _status = _trajEditMode
-                                ? '軌道点編集モード: 赤丸/アンカーをドラッグ'
-                                : '軌道モード: 手玉→的球の順にタップ';
+                                ? _trajEditStatus
+                                : '軌道モード: 手玉（●）→的球の順にタップ';
                           }),
                   child: Text(_trajEditMode ? '点編集中' : '軌道点編集'),
                 ),
@@ -1892,11 +1982,17 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           child: CustomPaint(
             painter: TrajectoryPainter(
               felt: _felt,
+              ballRadiusPx: _ballRadiusPx(),
               lines: _lines,
               ballMap: {for (final b in _balls) b.def.id: b},
+              editMode: _trajEditMode,
               draggingContactIndex: _dragContactIdx,
               draggingCueAnchorIndex: _dragCueAIdx,
               draggingObjAnchorIndex: _dragObjAIdx,
+              draggingCueEndIndex: _dragCueEndIdx,
+              draggingCueBounceEndIndex: _dragCueBounceEndIdx,
+              draggingObjEndIndex: _dragObjEndIdx,
+              draggingObjBounceEndIndex: _dragObjBounceEndIdx,
             ),
           ),
         ),
@@ -1904,9 +2000,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           child: Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (e) {
-              if (MediaQuery.of(context).size.shortestSide < 700 &&
-                  _spAxisBallId != null &&
-                  !_trajMode) {
+              if (_isPhone && _spAxisBallId != null && !_trajMode) {
                 final p = e.localPosition;
                 final hitBall = _balls.any(
                   (b) => b.onTable && _isNearBallCenter(p, b, 28),
@@ -1916,15 +2010,12 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                       orElse: () => null,
                     );
                 final hitAxis = axisBall != null &&
-                    ((p.dx - (_felt.left + axisBall.x * _felt.width)).abs() <= 18 ||
-                        (p.dy - (_felt.top + axisBall.y * _felt.height)).abs() <= 18);
+                    ((p.dx - (_felt.left + axisBall.x * _felt.width)).abs() <=
+                            22 ||
+                        (p.dy - (_felt.top + axisBall.y * _felt.height)).abs() <=
+                            22);
                 if (!hitBall && !hitAxis) {
-                  setState(() {
-                    _spAxisBallId = null;
-                    _selectedPhoneAxis = null;
-                    _dragAxisX = false;
-                    _dragAxisY = false;
-                  });
+                  setState(_clearPhoneAxisGuides);
                 }
               }
               if (!_trajMode || !_trajEditMode) return;
@@ -1949,6 +2040,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
               _dragCueBounceEndIdx = null;
               _dragObjEndIdx = null;
               _dragObjBounceEndIdx = null;
+              if (_trajEditMode) {
+                setState(() => _status = _trajEditStatus);
+              }
             },
             onPointerCancel: (_) {
               _dragContactIdx = null;
@@ -1958,13 +2052,14 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
               _dragCueBounceEndIdx = null;
               _dragObjEndIdx = null;
               _dragObjBounceEndIdx = null;
+              if (_trajEditMode) {
+                setState(() => _status = _trajEditStatus);
+              }
             },
           ),
         ),
         ..._balls.where((b) => b.onTable).map((b) => _ballPositioned(b)),
-        if (MediaQuery.of(context).size.shortestSide < 700 &&
-            _spAxisBallId != null &&
-            _dragBallId == null)
+        if (_isPhone && _spAxisBallId != null && !_trajMode)
           _buildPhoneAxisGuides(),
       ],
     );
@@ -1981,56 +2076,22 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
     final cx = felt.left + b.x * felt.width;
     final cy = felt.top + b.y * felt.height;
-    const lineColor = Colors.white;
+    const guideHit = 44.0;
+    const lineIdle = Color.fromRGBO(255, 255, 255, 0.72);
+    const lineActive = Color.fromRGBO(255, 255, 255, 0.98);
 
     return Stack(
       children: [
+        // 縦線 = Y（上下移動）
         Positioned(
-          left: cx - 14,
+          left: cx - (guideHit / 2),
           top: felt.top,
-          width: 28,
+          width: guideHit,
           height: felt.height,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) {
-              if (_selectedPhoneAxis != _PhoneAxisSelection.x) return;
-              setState(() => _dragAxisX = true);
-            },
+            onPanStart: (_) => setState(() => _dragAxisY = true),
             onPanUpdate: (d) {
-              if (_selectedPhoneAxis != _PhoneAxisSelection.x) return;
-              final nextX = (b.x + (d.delta.dx / felt.width)).clamp(0.0, 1.0);
-              setState(() {
-                b.x = nextX;
-                _dragAxisX = true;
-              });
-            },
-            onPanEnd: (_) {
-              if (_dragAxisX) setState(() => _dragAxisX = false);
-            },
-            onPanCancel: () {
-              if (_dragAxisX) setState(() => _dragAxisX = false);
-            },
-            child: CustomPaint(
-              painter: _GuideLinePainter(
-                isVertical: true,
-                color: lineColor,
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: felt.left,
-          top: cy - 14,
-          width: felt.width,
-          height: 28,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onPanStart: (_) {
-              if (_selectedPhoneAxis != _PhoneAxisSelection.y) return;
-              setState(() => _dragAxisY = true);
-            },
-            onPanUpdate: (d) {
-              if (_selectedPhoneAxis != _PhoneAxisSelection.y) return;
               final nextY = (b.y + (d.delta.dy / felt.height)).clamp(0.0, 1.0);
               setState(() {
                 b.y = nextY;
@@ -2045,92 +2106,56 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             },
             child: CustomPaint(
               painter: _GuideLinePainter(
-                isVertical: false,
-                color: lineColor,
+                isVertical: true,
+                color: _dragAxisY ? lineActive : lineIdle,
+                active: _dragAxisY,
               ),
             ),
           ),
         ),
+        // 横線 = X（左右移動）
         Positioned(
-          left: cx - 18,
-          top: felt.top - 4,
-          child: _axisHandle(
-            axis: 'X',
-            selected: _selectedPhoneAxis == _PhoneAxisSelection.x,
-            dragging: _dragAxisX,
-            onTap: () {
+          left: felt.left,
+          top: cy - (guideHit / 2),
+          width: felt.width,
+          height: guideHit,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onPanStart: (_) => setState(() => _dragAxisX = true),
+            onPanUpdate: (d) {
+              final nextX = (b.x + (d.delta.dx / felt.width)).clamp(0.0, 1.0);
               setState(() {
-                _selectedPhoneAxis = _PhoneAxisSelection.x;
-                _dragAxisY = false;
+                b.x = nextX;
+                _dragAxisX = true;
               });
             },
-          ),
-        ),
-        Positioned(
-          left: felt.right - 32,
-          top: cy - 18,
-          child: _axisHandle(
-            axis: 'Y',
-            selected: _selectedPhoneAxis == _PhoneAxisSelection.y,
-            dragging: _dragAxisY,
-            onTap: () {
-              setState(() {
-                _selectedPhoneAxis = _PhoneAxisSelection.y;
-                _dragAxisX = false;
-              });
+            onPanEnd: (_) {
+              if (_dragAxisX) setState(() => _dragAxisX = false);
             },
+            onPanCancel: () {
+              if (_dragAxisX) setState(() => _dragAxisX = false);
+            },
+            child: CustomPaint(
+              painter: _GuideLinePainter(
+                isVertical: false,
+                color: _dragAxisX ? lineActive : lineIdle,
+                active: _dragAxisX,
+              ),
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _axisHandle({
-    required String axis,
-    required bool selected,
-    required bool dragging,
-    required VoidCallback onTap,
-  }) {
-    final fill = selected
-        ? const Color(0xFFCC7A00)
-        : dragging
-            ? AppleColors.appleBlue
-            : AppleColors.white;
-    final fg = (selected || dragging) ? AppleColors.white : AppleColors.appleBlue;
-    final border = selected ? const Color(0xFF9A5D00) : AppleColors.appleBlue;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: border, width: 1.5),
-          boxShadow: AppleColors.cardShadow,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          axis,
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            color: fg,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _ballPositioned(BallInstance b) {
     final felt = _felt;
     final r = _ballRadiusPx();
-    final isPhone = MediaQuery.of(context).size.shortestSide < 700;
     final isDraggingThisBall = !_trajMode && _dragBallId == b.def.id;
     final visualScale = isDraggingThisBall ? 1.45 : 1.0;
     final visualRadius = r * visualScale;
     final hitSize =
-        isPhone ? math.max(visualRadius * 2, 44.0) : visualRadius * 2;
+        _isPhone ? math.max(visualRadius * 2, 44.0) : visualRadius * 2;
     final left = felt.left + b.x * felt.width - (hitSize / 2);
     final top = felt.top + b.y * felt.height - (hitSize / 2);
     return Positioned(
@@ -2143,6 +2168,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         onPanDown: (d) =>
             _handleBallPointerDown(b, d.localPosition, d.localPosition),
         onPanUpdate: (d) {
+          if (_isPhone) return;
           if (!_trajMode && _dragBallId == b.def.id) {
             final stackBox =
                 _tableStackKey.currentContext?.findRenderObject() as RenderBox?;
@@ -2279,16 +2305,18 @@ class _GuideLinePainter extends CustomPainter {
   _GuideLinePainter({
     required this.isVertical,
     required this.color,
+    this.active = false,
   });
 
   final bool isVertical;
   final Color color;
+  final bool active;
 
   @override
   void paint(Canvas canvas, Size size) {
     final p = Paint()
       ..color = color
-      ..strokeWidth = 2.0;
+      ..strokeWidth = active ? 2.0 : 1.5;
     if (isVertical) {
       final x = size.width / 2;
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
@@ -2300,7 +2328,9 @@ class _GuideLinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GuideLinePainter oldDelegate) =>
-      oldDelegate.isVertical != isVertical || oldDelegate.color != color;
+      oldDelegate.isVertical != isVertical ||
+      oldDelegate.color != color ||
+      oldDelegate.active != active;
 }
 
 class SavedLayoutsScreen extends StatefulWidget {
