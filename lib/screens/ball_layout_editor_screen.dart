@@ -1176,6 +1176,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   bool _dragAxisY = false;
   bool _spBallSetReady = false;
 
+  final TransformationController _phoneZoomCtrl = TransformationController();
+  String? _phoneZoomFitKey;
+
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
 
@@ -1249,9 +1252,24 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
   @override
   void dispose() {
+    _phoneZoomCtrl.dispose();
     _tagCtrl.dispose();
     _memoCtrl.dispose();
     super.dispose();
+  }
+
+  /// SP: 台は常に画面幅いっぱい。初期は全体が見える倍率、ピンチで幅いっぱいまで拡大。
+  void _applyPhoneZoomFit(double maxW, double maxH, double aspectRatio) {
+    final tableH = maxW / aspectRatio;
+    final fitScale = math.min(1.0, maxH / tableH);
+    final key =
+        '${maxW.toStringAsFixed(1)}x${maxH.toStringAsFixed(1)}@$aspectRatio';
+    if (_phoneZoomFitKey == key) return;
+    _phoneZoomFitKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _phoneZoomCtrl.value = Matrix4.diagonal3Values(fitScale, fitScale, 1.0);
+    });
   }
 
   void _applyMode(GameMode m, {required bool resetPositions}) {
@@ -1745,7 +1763,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
-  /// SP: 1×で台全体が収まるサイズ。ピンチで拡大可能。
+  /// SP: キャンバスは画面幅いっぱい。初期ズームで全容表示、ピンチで幅いっぱいまで拡大。
   Widget _buildPhoneZoomableTable({required double aspectRatio}) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1753,20 +1771,19 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         final maxH = constraints.maxHeight;
         if (maxW <= 0 || maxH <= 0) return const SizedBox.shrink();
 
-        var tableW = maxW;
-        var tableH = tableW / aspectRatio;
-        if (tableH > maxH) {
-          tableH = maxH;
-          tableW = tableH * aspectRatio;
-        }
+        final tableW = maxW;
+        final tableH = tableW / aspectRatio;
+        final fitScale = math.min(1.0, maxH / tableH);
+        _applyPhoneZoomFit(maxW, maxH, aspectRatio);
 
         final lockPan = _trajEditMode;
         return InteractiveViewer(
-          minScale: 1.0,
+          transformationController: _phoneZoomCtrl,
+          minScale: fitScale,
           maxScale: 4.5,
-          constrained: true,
-          boundaryMargin: const EdgeInsets.all(8),
-          alignment: Alignment.center,
+          constrained: false,
+          boundaryMargin: const EdgeInsets.all(12),
+          alignment: Alignment.topCenter,
           panEnabled: !lockPan,
           scaleEnabled: true,
           child: SizedBox(
