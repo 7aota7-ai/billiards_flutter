@@ -407,12 +407,13 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
               style: const TextStyle(color: Colors.white, fontSize: 15),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Web でもカメラを使えます（App Store 不要）。\n'
               'HTTPS の URL から開き、カメラ許可を与えてください。\n'
-              '黄色枠に台を合わせて撮影 → 4隅を確認して検出します。',
+              '${TableGuideGeometry.captureHint}\n'
+              '黄色枠は目安です。次画面で4隅を微調整して検出します。',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 13),
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
             if (!_serverOk && _serverStatus.detail != null) ...[
               const SizedBox(height: 12),
@@ -515,7 +516,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
             ),
             Text(
               _serverOk
-                  ? '黄色枠に合わせて撮影 → 次画面で4隅を確認して検出'
+                  ? '${TableGuideGeometry.captureHint} → 次画面で4隅を確認して検出'
                   : _serverStatus.summary,
               style: TextStyle(
                 color: _serverOk ? Colors.white : Colors.orange.shade200,
@@ -565,18 +566,18 @@ class _TableGuidePainter extends CustomPainter {
     final dimPath = Path.combine(PathOperation.difference, outer, hole);
     canvas.drawPath(
       dimPath,
-      Paint()..color = const Color(0xAA000000),
+      Paint()..color = const Color(0x66000000),
     );
 
     final border = Paint()
       ..color = const Color(0xFFFFEB3B)
-      ..strokeWidth = 3
+      ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke;
     canvas.drawPath(hole, border);
 
     const labels = ['遠L', '遠R', '手R', '手L'];
     for (var i = 0; i < pts.length; i++) {
-      canvas.drawCircle(pts[i], 6, Paint()..color = const Color(0xFFFFEB3B));
+      canvas.drawCircle(pts[i], 5, Paint()..color = const Color(0xFFFFEB3B));
       final tp = TextPainter(
         text: TextSpan(
           text: labels[i],
