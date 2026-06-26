@@ -18,19 +18,20 @@ class TableGuideGeometry {
 
   /// Perspective: far rail apparent width / near rail width (end view).
   ///
-  /// Calibrated from hall photos (Jun 2025): 165 cm shooter, ~80 cm table,
-  /// seat only 5–60 cm behind the near cushion (cannot step back). With
-  /// camera ~78 cm above the felt, geometry gives ratio ≈ 0.29; field check
-  /// nudged to 0.35 because the far rail looked slightly narrow at 0.30.
-  static const farNearWidthRatio = 0.35;
+  /// Calibrated for a natural standing shot (Jun 2026): chest-height phone,
+  /// 5–60 cm behind the near cushion — not overhead. Overhead tilt made the
+  /// far rail look too narrow (ratio ≈ 0.30–0.35) and forced an unrealistic
+  /// arm position. At a comfortable oblique angle the far rail spans ~55% of
+  /// the near rail width.
+  static const farNearWidthRatio = 0.55;
 
   /// Normalized preview positions for TL → TR → BR → BL.
   ///
-  /// Wider/taller than a distant shot: without zoom-out, the near pockets sit
-  /// at the frame edge when standing at the seat (5–60 cm behind the cushion).
-  static const farYNorm = 0.27;
-  static const nearYNorm = 0.76;
-  static const nearHalfWidthNorm = 0.48;
+  /// Sized so the whole felt fits with side margin while standing upright;
+  /// aligning the guide should not require raising the phone above eye level.
+  static const farYNorm = 0.38;
+  static const nearYNorm = 0.86;
+  static const nearHalfWidthNorm = 0.40;
 
   static List<Offset> guideCornersNormalized() {
     const farHalf = nearHalfWidthNorm * farNearWidthRatio;
@@ -46,11 +47,15 @@ class TableGuideGeometry {
   /// Portrait table photo — initial felt corners (photo import / browser camera).
   /// Same trapezoid as [guideCornersNormalized] for a typical portrait frame.
   static const defaultPhotoCorners = <Offset>[
-    Offset(0.332, 0.27),
-    Offset(0.668, 0.27),
-    Offset(0.98, 0.76),
-    Offset(0.02, 0.76),
+    Offset(0.28, 0.38),
+    Offset(0.72, 0.38),
+    Offset(0.90, 0.86),
+    Offset(0.10, 0.86),
   ];
+
+  /// Short hint for capture screens (natural angle, no overhead).
+  static const captureHint =
+      '立ったまま自然な角度でOK。台の4隅が画面に入れば十分です';
 
   static List<List<double>> defaultPhotoCornersAsLists() =>
       defaultPhotoCorners
