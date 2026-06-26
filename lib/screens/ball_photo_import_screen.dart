@@ -24,9 +24,9 @@ class BallPhotoImportScreen extends StatefulWidget {
 
 class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
   static const _cornerLabels = [
-    '① 遠い側・左（画像の上、y≈0.15）',
+    '① 遠い側・左（画像の上、y≈0.38）',
     '② 遠い側・右',
-    '③ 手前・右（下までスクロール、y≈0.85）',
+    '③ 手前・右（下までスクロール、y≈0.69）',
     '④ 手前・左',
   ];
 
@@ -248,9 +248,10 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
     final ys = norm.map((p) => p[1]).toList();
     final ySpan = ys.reduce((a, b) => a > b ? a : b) -
         ys.reduce((a, b) => a < b ? a : b);
-    final spanHint = ySpan < 0.35
+    final spanHint = ySpan < TableGuideGeometry.minCornerYSpan
         ? '\n⚠ 縦方向が狭すぎます（y幅=${ySpan.toStringAsFixed(2)}）。'
-            '遠い側 y≈0.15 / 手前側 y≈0.85 を目安に'
+            '遠い側 y≈${TableGuideGeometry.farYNorm.toStringAsFixed(2)} / '
+            '手前側 y≈${TableGuideGeometry.nearYNorm.toStringAsFixed(2)} を目安に'
         : '';
     _status =
         '4点完了 (${_imageSize!.width.toInt()}×${_imageSize!.height.toInt()})\n'
@@ -263,7 +264,7 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
     final ys = _normalizedCorners().map((p) => p[1]);
     final ySpan = ys.reduce((a, b) => a > b ? a : b) -
         ys.reduce((a, b) => a < b ? a : b);
-    return ySpan >= 0.35;
+    return ySpan >= TableGuideGeometry.minCornerYSpan;
   }
 
   List<List<double>> _normalizedCorners() {
@@ -470,7 +471,7 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        '黄色=目安位置。③④は BRUNSWICK 付近（y≈0.85）まで下へ',
+                        '黄色=目安位置。③④は手前のフェルト角（y≈0.69）まで下へ',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Colors.black54,
                             ),
@@ -894,7 +895,8 @@ class _FullscreenCornerPickerState extends State<_FullscreenCornerPicker> {
             child: const Text('リセット'),
           ),
           FilledButton(
-            onPressed: _corners.length == 4 && ySpan >= 0.35
+            onPressed: _corners.length == 4 &&
+                    ySpan >= TableGuideGeometry.minCornerYSpan
                 ? () {
                     widget.onDone(_corners);
                     Navigator.pop(context);
@@ -914,9 +916,9 @@ class _FullscreenCornerPickerState extends State<_FullscreenCornerPicker> {
                 _corners.length < 2
                     ? '黄色の目安に合わせて ①② をタップ（画像の上の方）'
                     : _corners.length < 4
-                        ? '③④ は BRUNSWICK 付近まで下にスクロールして黄色の目安へ'
-                        : ySpan < 0.35
-                            ? 'y幅が ${ySpan.toStringAsFixed(2)} と狭いです。手前の角をもっと下（y≈0.85）へ'
+                        ? '③④ は手前のフェルト角まで下にスクロール（y≈0.69）'
+                        : ySpan < TableGuideGeometry.minCornerYSpan
+                            ? 'y幅が ${ySpan.toStringAsFixed(2)} と狭いです。手前の角をもっと下（y≈0.69）へ'
                             : 'OK — 完了を押してください',
                 style: const TextStyle(fontSize: 13),
               ),

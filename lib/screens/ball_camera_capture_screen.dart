@@ -41,6 +41,10 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
     available: false,
     summary: '検出 API: 確認中…',
   );
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  double _currentZoom = 1.0;
+  bool _zoomSupported = false;
 
   @override
   void initState() {
@@ -156,6 +160,38 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
       _initializing = false;
       _error = null;
     });
+    await _initZoom(controller);
+  }
+
+  Future<void> _initZoom(CameraController controller) async {
+    try {
+      final min = await controller.getMinZoomLevel();
+      final max = await controller.getMaxZoomLevel();
+      await controller.setZoomLevel(min);
+      if (!mounted) return;
+      setState(() {
+        _minZoom = min;
+        _maxZoom = max;
+        _currentZoom = min;
+        _zoomSupported = max > min;
+      });
+    } on CameraException {
+      if (!mounted) return;
+      setState(() => _zoomSupported = false);
+    }
+  }
+
+  Future<void> _setZoom(double zoom) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final clamped = zoom.clamp(_minZoom, _maxZoom);
+    try {
+      await controller.setZoomLevel(clamped);
+      if (!mounted) return;
+      setState(() => _currentZoom = clamped);
+    } on CameraException catch (e) {
+      _showSnack('ズーム: ${e.description ?? e.code}');
+    }
   }
 
   Future<void> _retryInit() async {
@@ -310,6 +346,7 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
             ],
           ),
         ),
+        if (_zoomSupported) _buildZoomBar(),
         SafeArea(
           top: false,
           child: Padding(
@@ -495,6 +532,42 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
                 '/photo-import',
               ),
               child: const Text('写真から読込へ'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildZoomBar() {
+    return Material(
+      color: const Color(0xFF1B1B1B),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'ズームアウト（広角）',
+              onPressed: _currentZoom <= _minZoom
+                  ? null
+                  : () => _setZoom(_currentZoom - (_maxZoom - _minZoom) * 0.08),
+              icon: const Icon(Icons.zoom_out, color: Colors.white70),
+            ),
+            Expanded(
+              child: Slider(
+                value: _currentZoom,
+                min: _minZoom,
+                max: _maxZoom,
+                activeColor: const Color(0xFFFFEB3B),
+                onChanged: _capturing ? null : _setZoom,
+              ),
+            ),
+            IconButton(
+              tooltip: 'ズームイン',
+              onPressed: _currentZoom >= _maxZoom
+                  ? null
+                  : () => _setZoom(_currentZoom + (_maxZoom - _minZoom) * 0.08),
+              icon: const Icon(Icons.zoom_in, color: Colors.white70),
             ),
           ],
         ),
