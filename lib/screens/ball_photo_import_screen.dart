@@ -390,7 +390,15 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
       _showSnack('検出結果がありません');
       return;
     }
-    PendingPhotoImportStore.set(_result!);
+    PendingPhotoImportStore.set(
+      PendingPhotoImport(
+        layout: _result!,
+        imageBytes: _imageBytes,
+        imageSize: _imageSize,
+        cornersNormalized:
+            _corners.length == 4 ? _normalizedCorners() : null,
+      ),
+    );
     if (!mounted) return;
     await Navigator.of(context).pushNamedAndRemoveUntil(
       '/layout',

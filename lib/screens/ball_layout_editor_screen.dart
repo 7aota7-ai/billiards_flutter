@@ -2,11 +2,14 @@
 
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/detected_ball_layout.dart';
+import '../models/table_guide_geometry.dart';
 import '../services/ball_detection_service.dart';
+import '../services/felt_homography.dart';
 import '../services/pending_photo_import_store.dart';
 import '../theme/apple_theme.dart';
 
@@ -1398,6 +1401,13 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   String? _phoneZoomFitKey;
   bool _phoneZoomDidInitialFit = false;
 
+  /// 写真読込から引き継いだ参照写真（配置比較用）。
+  Uint8List? _refImageBytes;
+  Size? _refImageSize;
+  List<List<double>>? _refCornersNorm;
+  bool _showRefPhoto = true;
+  double _refPhotoFlex = 0.42;
+
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
 
@@ -1459,8 +1469,11 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     }
     final pending = PendingPhotoImportStore.take();
     if (pending != null) {
+      _refImageBytes = pending.imageBytes;
+      _refImageSize = pending.imageSize;
+      _refCornersNorm = pending.cornersNormalized;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _applyDetectedLayout(pending);
+        if (mounted) _applyDetectedLayout(pending.layout);
       });
     }
   }
@@ -1599,7 +1612,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _trajMode = false;
       _trajEditMode = false;
       _clearPhoneAxisGuides();
-      _status = '写真から $placed 球を配置（色ヒントで仮割当・要確認）';
+      _status = _hasRefPhoto
+          ? '写真から $placed 球を配置 — 上の参照写真と比較しながら修正'
+          : '写真から $placed 球を配置（色ヒントで仮割当・要確認）';
     });
   }
 
@@ -2063,7 +2078,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
               children: [
                 Expanded(
                   child: ClipRect(
-                    child: _buildPhoneZoomableTable(aspectRatio: 0.5),
+                    child: _buildTableArea(
+                      aspectRatio: 0.5,
+                      phone: false,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -2133,7 +2151,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             child: ClipRect(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                child: _buildPhoneZoomableTable(aspectRatio: 2.0),
+                child: _buildTableArea(
+                  aspectRatio: _tableAspectForPhone(),
+                  phone: true,
+                ),
               ),
             ),
           ),
@@ -2160,6 +2181,149 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
+  bool get _hasRefPhoto =>
+      _refImageBytes != null &&
+      _refImageSize != null &&
+      _refCornersNorm != null &&
+      _refCornersNorm!.length == 4;
+
+  /// SP: 検出座標と同じ俯瞰 2:1。PC 手前視点は従来どおり 1:2。
+  double _tableAspectForPhone() => TableGuideGeometry.playingAspect;
+
+  Widget _buildTableArea({required double aspectRatio, bool phone = false}) {
+    if (!_hasRefPhoto || !_showRefPhoto) {
+      return phone
+          ? _buildPhoneZoomableTable(aspectRatio: aspectRatio)
+          : _buildTableFitted(aspectRatio: aspectRatio);
+    }
+    final portrait =
+        MediaQuery.of(context).orientation == Orientation.portrait;
+    if (phone && !portrait) {
+      return _buildRefPhotoSplitHorizontal(aspectRatio);
+    }
+    return _buildRefPhotoSplitVertical(aspectRatio, phone: phone);
+  }
+
+  Widget _buildRefPhotoSplitVertical(double aspectRatio, {required bool phone}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final totalH = constraints.maxHeight;
+        final photoH = (totalH * _refPhotoFlex).clamp(80.0, totalH - 120.0);
+        final tableH = totalH - photoH - 6;
+        return Column(
+          children: [
+            SizedBox(height: photoH, child: _buildReferencePhotoPanel()),
+            GestureDetector(
+              onVerticalDragUpdate: (d) {
+                setState(() {
+                  _refPhotoFlex = (_refPhotoFlex + d.delta.dy / totalH)
+                      .clamp(0.22, 0.68);
+                });
+              },
+              child: Container(
+                height: 6,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: const Center(
+                  child: Icon(Icons.drag_handle, size: 14, color: Colors.black38),
+                ),
+              ),
+            ),
+            SizedBox(
+              height: tableH,
+              child: phone
+                  ? _buildPhoneZoomableTable(aspectRatio: aspectRatio)
+                  : _buildTableFitted(aspectRatio: aspectRatio),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildRefPhotoSplitHorizontal(double aspectRatio) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final totalW = constraints.maxWidth;
+        final photoW = (totalW * 0.44).clamp(120.0, totalW - 160.0);
+        return Row(
+          children: [
+            SizedBox(width: photoW, child: _buildReferencePhotoPanel()),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: _buildPhoneZoomableTable(aspectRatio: aspectRatio),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildReferencePhotoPanel() {
+    final bytes = _refImageBytes!;
+    final imageSize = _refImageSize!;
+    final corners = _refCornersNorm!;
+    return Material(
+      color: Colors.black,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            color: Colors.black87,
+            child: Text(
+              '参照写真（ドラッグで比率変更）',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+            ),
+          ),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final maxW = constraints.maxWidth;
+                final maxH = constraints.maxHeight;
+                if (maxW <= 0 || maxH <= 0) return const SizedBox.shrink();
+                final scale = math.min(
+                  maxW / imageSize.width,
+                  maxH / imageSize.height,
+                );
+                final renderW = imageSize.width * scale;
+                final renderH = imageSize.height * scale;
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(
+                      child: SizedBox(
+                        width: renderW,
+                        height: renderH,
+                        child: Stack(
+                          clipBehavior: Clip.hardEdge,
+                          children: [
+                            Image.memory(bytes, fit: BoxFit.fill),
+                            CustomPaint(
+                              painter: _ReferenceBallOverlayPainter(
+                                balls: _balls
+                                    .where((b) => b.onTable)
+                                    .toList(growable: false),
+                                cornersNorm: corners,
+                                imageSize: imageSize,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPortraitLayout(BuildContext context) {
     return Column(
       children: [
@@ -2169,7 +2333,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           child: ClipRect(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
-              child: _buildPhoneZoomableTable(aspectRatio: 0.5),
+              child: _buildTableArea(
+                aspectRatio: _tableAspectForPhone(),
+                phone: true,
+              ),
             ),
           ),
         ),
@@ -2248,6 +2415,17 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                 if (s.isEmpty) return;
                 _applyMode(s.first, resetPositions: true);
               },
+            ),
+            SizedBox(height: spacing),
+          ],
+          if (_hasRefPhoto) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilterChip(
+                label: Text(_showRefPhoto ? '参照写真 ON' : '参照写真 OFF'),
+                selected: _showRefPhoto,
+                onSelected: (v) => setState(() => _showRefPhoto = v),
+              ),
             ),
             SizedBox(height: spacing),
           ],
@@ -2995,4 +3173,54 @@ class _SavedLayoutsScreenState extends State<SavedLayoutsScreen> {
             ),
     );
   }
+}
+
+class _ReferenceBallOverlayPainter extends CustomPainter {
+  _ReferenceBallOverlayPainter({
+    required this.balls,
+    required this.cornersNorm,
+    required this.imageSize,
+  });
+
+  final List<BallInstance> balls;
+  final List<List<double>> cornersNorm;
+  final Size imageSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = Colors.white;
+    final fill = Paint()..color = const Color(0xAAFF9500);
+
+    for (final ball in balls) {
+      final norm = FeltHomography.warpNormToImageNorm(
+        Offset(ball.x, ball.y),
+        cornersNorm,
+        imageSize,
+      );
+      if (norm == null) continue;
+      final cx = norm.dx * size.width;
+      final cy = norm.dy * size.height;
+      final r = math.min(size.width, size.height) * 0.018;
+      canvas.drawCircle(Offset(cx, cy), r, fill);
+      canvas.drawCircle(Offset(cx, cy), r, stroke);
+      final tp = TextPainter(
+        text: TextSpan(
+          text: ball.def.label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(cx - tp.width / 2, cy - tp.height / 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ReferenceBallOverlayPainter old) => true;
 }
