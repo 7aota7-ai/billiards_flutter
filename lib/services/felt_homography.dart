@@ -45,39 +45,50 @@ class FeltHomography {
 
   /// API 検出座標 → フェルト正規化座標。
   ///
-  /// オーバーレイはタップ順ワープ、API は [orderCorners] 後の軸で検出する。
-  /// 台形写真で並べ替えが入ると API の x/y が入れ替わるため補正する。
+  /// API ワープは常に 2000×1000（x=長辺, y=短辺）。表示は
+  /// 縦台: felt.x=短辺, felt.y=長辺 / 横台: felt.x=長辺, felt.y=短辺。
   static Offset detectionToFeltNorm(
     double detectionX,
     double detectionY, {
-    List<List<double>>? cornersNorm,
-    Size? imageSize,
     required bool portraitFelt,
   }) {
-    final dx = detectionX.clamp(0.0, 1.0);
-    final dy = detectionY.clamp(0.0, 1.0);
-    final axesSwapped = cornersNorm != null &&
-        imageSize != null &&
-        cornersNorm.length == 4 &&
-        !_tapOrderMatchesOrdered(cornersNorm, imageSize);
-
-    if (portraitFelt) {
-      return axesSwapped ? Offset(dy, dx) : Offset(dx, dy);
-    }
-    return axesSwapped ? Offset(dx, dy) : Offset(dy, dx);
+    return feltNormFromWarpAxes(
+      warpAxesFromDetection(detectionX, detectionY),
+      portraitFelt: portraitFelt,
+    );
   }
 
-  /// orderCorners がタップ順 ①〜④ を変えたら true（API 軸が入れ替わる）。
-  static bool _tapOrderMatchesOrdered(
-    List<List<double>> cornersNorm,
-    Size imageSize,
+  /// API 正規化座標をワープ長辺/短辺へ（layout 非依存の canonical）。
+  static ({double alongLong, double alongShort}) warpAxesFromDetection(
+    double detectionX,
+    double detectionY,
   ) {
-    final tap = cornersFromTapOrder(cornersNorm, imageSize);
-    final ordered = orderCorners(tap);
-    for (var i = 0; i < 4; i++) {
-      if ((tap[i] - ordered[i]).distance > 1.5) return false;
+    return (
+      alongLong: detectionX.clamp(0.0, 1.0),
+      alongShort: detectionY.clamp(0.0, 1.0),
+    );
+  }
+
+  /// ワープ長辺/短辺 → 現在のフェルト正規化座標。
+  static Offset feltNormFromWarpAxes(
+    ({double alongLong, double alongShort}) warp, {
+    required bool portraitFelt,
+  }) {
+    if (portraitFelt) {
+      return Offset(warp.alongShort, warp.alongLong);
     }
-    return true;
+    return Offset(warp.alongLong, warp.alongShort);
+  }
+
+  /// フェルト正規化 ↔ ワープ軸（layout 切替時の座標変換に使用）。
+  static ({double alongLong, double alongShort}) feltNormToWarpAxes(
+    Offset feltNorm, {
+    required bool portraitFelt,
+  }) {
+    if (portraitFelt) {
+      return (alongLong: feltNorm.dy, alongShort: feltNorm.dx);
+    }
+    return (alongLong: feltNorm.dx, alongShort: feltNorm.dy);
   }
 
   /// 写真読込のタップ順（①〜④）をピクセル座標に変換。

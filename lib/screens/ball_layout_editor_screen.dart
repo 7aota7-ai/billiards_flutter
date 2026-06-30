@@ -1310,6 +1310,7 @@ class SavedBallLayout {
     required this.memo,
     required this.balls,
     required this.lines,
+    this.coordPortrait,
   });
 
   final String id;
@@ -1320,6 +1321,9 @@ class SavedBallLayout {
   final List<BallInstance> balls;
   final List<TrajectoryLine> lines;
 
+  /// 保存時のフェルト向き（縦台=true）。別レイアウトで開くとき座標変換に使う。
+  final bool? coordPortrait;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'createdAt': createdAt,
@@ -1328,6 +1332,7 @@ class SavedBallLayout {
         'memo': memo,
         'balls': balls.map((b) => b.toJson()).toList(),
         'lines': lines.map((l) => l.toJson()).toList(),
+        if (coordPortrait != null) 'coordPortrait': coordPortrait,
       };
 
   static SavedBallLayout? fromJsonString(String s) {
@@ -1360,6 +1365,7 @@ class SavedBallLayout {
         memo: j['memo'] as String? ?? '',
         balls: balls,
         lines: lines,
+        coordPortrait: j['coordPortrait'] as bool?,
       );
     } catch (_) {
       return null;
@@ -1432,6 +1438,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   DetectedBallLayout? _refDetectedLayout;
   bool _renderRefOverlayOnTable = false;
   bool? _feltCoordsPortrait;
+  bool _coordSpaceReady = false;
 
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
@@ -1516,6 +1523,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _spBallSetReady = true;
       _upgradeToFifteenBallSet();
     }
+    _ensureCoordSpaceAligned();
     _syncFeltOrientationIfNeeded();
     if (_hasRefPhoto) {
       final wantPortrait = _layoutUsesPortraitTable();
@@ -1533,7 +1541,21 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     return MediaQuery.of(context).orientation == Orientation.portrait;
   }
 
+  /// 保存済み配置を開いたとき、保存時と異なる台向きなら座標を変換する。
+  void _ensureCoordSpaceAligned() {
+    if (_coordSpaceReady) return;
+    _coordSpaceReady = true;
+
+    final savedPortrait = widget.initialLayout?.coordPortrait;
+    final currentPortrait = _layoutUsesPortraitTable();
+    if (savedPortrait != null && savedPortrait != currentPortrait) {
+      _swapFeltNormalizedCoords();
+    }
+    _feltCoordsPortrait = currentPortrait;
+  }
+
   void _syncFeltOrientationIfNeeded() {
+    if (!_coordSpaceReady) return;
     final portrait = _layoutUsesPortraitTable();
     if (_feltCoordsPortrait != null && _feltCoordsPortrait != portrait) {
       _swapFeltNormalizedCoords();
@@ -1696,8 +1718,6 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         final feltNorm = FeltHomography.detectionToFeltNorm(
           detected.x,
           detected.y,
-          cornersNorm: _refCornersNorm,
-          imageSize: _refImageSize,
           portraitFelt: portraitFelt,
         );
         ball
@@ -2084,6 +2104,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       memo: _memoCtrl.text,
       balls: _balls.where((b) => b.onTable).map((b) => b.copy()).toList(),
       lines: _lines.map((l) => l.copy()).toList(),
+      coordPortrait: _feltCoordsPortrait ?? _layoutUsesPortraitTable(),
     );
     list.add(jsonEncode(doc.toJson()));
     await prefs.setStringList(_prefKey, list);
