@@ -84,6 +84,8 @@ app.add_middleware(RateLimitMiddleware, max_requests=RATE_LIMIT_REQUESTS, window
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    # flutter run -d chrome uses a random localhost port (not only :8080).
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )

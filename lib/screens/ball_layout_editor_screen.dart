@@ -7,9 +7,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/detected_ball_layout.dart';
-import '../models/table_guide_geometry.dart';
 import '../services/ball_detection_service.dart';
 import '../services/felt_homography.dart';
+import '../services/felt_warp_service.dart';
 import '../services/pending_photo_import_store.dart';
 import '../theme/apple_theme.dart';
 
@@ -768,10 +768,12 @@ class BilliardsTablePainter extends CustomPainter {
   BilliardsTablePainter({
     required this.feltRect,
     this.label,
+    this.photoOverlayMode = false,
   });
 
   final Rect feltRect;
   final String? label;
+  final bool photoOverlayMode;
 
   static const Color frameColor = Color(0xFF7A5C3A);
   static const Color cushionColor = Color(0xFF5A3E1E);
@@ -851,22 +853,34 @@ class BilliardsTablePainter extends CustomPainter {
         height: felt.height + frameW * 2);
 
     final frameR = RRect.fromRectAndRadius(outer, const Radius.circular(6));
-    canvas.drawRRect(frameR, Paint()..color = frameColor);
+    final frameAlpha = photoOverlayMode ? 0.45 : 1.0;
+    canvas.drawRRect(
+      frameR,
+      Paint()..color = frameColor.withValues(alpha: frameAlpha),
+    );
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(cushionRect, const Radius.circular(4)),
-      Paint()..color = cushionColor,
+      Paint()..color = cushionColor.withValues(alpha: frameAlpha),
     );
 
     final chamfer = math.min(felt.width, felt.height) * 0.035;
     final feltPath = _chamferedFeltPath(felt, chamfer);
     canvas.save();
     canvas.clipPath(feltPath);
-    canvas.drawPath(feltPath, Paint()..color = feltColor);
+    final feltFillAlpha = photoOverlayMode ? 0.12 : 1.0;
+    canvas.drawPath(
+      feltPath,
+      Paint()..color = feltColor.withValues(alpha: feltFillAlpha),
+    );
 
-    _drawTexture(canvas, felt);
-    _drawGrid(canvas, felt);
-    _drawSpots(canvas, felt);
+    if (!photoOverlayMode) {
+      _drawTexture(canvas, felt);
+      _drawGrid(canvas, felt);
+      _drawSpots(canvas, felt);
+    } else {
+      _drawGrid(canvas, felt, alpha: 0.07);
+    }
     canvas.restore();
 
     _drawPockets(canvas, felt, cushionRect, chamfer);
@@ -891,9 +905,9 @@ class BilliardsTablePainter extends CustomPainter {
     }
   }
 
-  void _drawGrid(Canvas canvas, Rect felt) {
+  void _drawGrid(Canvas canvas, Rect felt, {double alpha = 0.13}) {
     final paint = Paint()
-      ..color = const Color.fromRGBO(255, 255, 255, 0.13)
+      ..color = Color.fromRGBO(255, 255, 255, alpha)
       ..strokeWidth = 1;
     final widthIsLong = felt.width >= felt.height;
     final xDiv = widthIsLong ? 8 : 4;
@@ -961,7 +975,9 @@ class BilliardsTablePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant BilliardsTablePainter oldDelegate) =>
-      oldDelegate.feltRect != feltRect || oldDelegate.label != label;
+      oldDelegate.feltRect != feltRect ||
+      oldDelegate.label != label ||
+      oldDelegate.photoOverlayMode != photoOverlayMode;
 }
 
 class TrajectoryPainter extends CustomPainter {
@@ -1398,6 +1414,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   bool _spBallSetReady = false;
 
   final TransformationController _phoneZoomCtrl = TransformationController();
+  final TransformationController _refPhotoZoomCtrl = TransformationController();
   String? _phoneZoomFitKey;
   bool _phoneZoomDidInitialFit = false;
 
@@ -1405,8 +1422,16 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   Uint8List? _refImageBytes;
   Size? _refImageSize;
   List<List<double>>? _refCornersNorm;
-  bool _showRefPhoto = true;
-  double _refPhotoFlex = 0.42;
+  Uint8List? _refWarpedBytes;
+  int _refWarpW = 0;
+  int _refWarpH = 0;
+  int _refWarpCacheVersion = 0;
+  bool? _refWarpPortrait;
+  bool _refWarping = false;
+  bool _refPhotoOverlayActive = false;
+  DetectedBallLayout? _refDetectedLayout;
+  bool _renderRefOverlayOnTable = false;
+  bool? _feltCoordsPortrait;
 
   final GlobalKey _tableStackKey = GlobalKey();
   Rect _felt = Rect.zero;
@@ -1472,6 +1497,12 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _refImageBytes = pending.imageBytes;
       _refImageSize = pending.imageSize;
       _refCornersNorm = pending.cornersNormalized;
+      _refDetectedLayout = pending.layout;
+      if (_refImageBytes != null) {
+        _refPhotoOverlayActive = true;
+        _refPhotoZoomCtrl.value = Matrix4.identity();
+      }
+      _scheduleRefWarp();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _applyDetectedLayout(pending.layout);
       });
@@ -1485,7 +1516,65 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _spBallSetReady = true;
       _upgradeToFifteenBallSet();
     }
+    _syncFeltOrientationIfNeeded();
+    if (_hasRefPhoto) {
+      final wantPortrait = _layoutUsesPortraitTable();
+      if (_refWarpPortrait != null && _refWarpPortrait != wantPortrait) {
+        _refWarpedBytes = null;
+        _refWarpCacheVersion = 0;
+        _scheduleRefWarp();
+      }
+    }
   }
+
+  /// SP 縦=ポートレート台、SP 横・PC=ランドスケープ台（layout 基準で座標系を固定）。
+  bool _layoutUsesPortraitTable() {
+    if (!_isPhone) return false;
+    return MediaQuery.of(context).orientation == Orientation.portrait;
+  }
+
+  void _syncFeltOrientationIfNeeded() {
+    final portrait = _layoutUsesPortraitTable();
+    if (_feltCoordsPortrait != null && _feltCoordsPortrait != portrait) {
+      _swapFeltNormalizedCoords();
+      _phoneZoomDidInitialFit = false;
+      _phoneZoomFitKey = null;
+      _phoneZoomCtrl.value = Matrix4.identity();
+      if (mounted) setState(() {});
+    }
+    _feltCoordsPortrait = portrait;
+  }
+
+  /// 縦台↔横台でフェルト正規化軸が入れ替わる: (x,y)→(y,x)。
+  void _swapFeltNormalizedCoords() {
+    for (final b in _balls) {
+      if (!b.onTable) continue;
+      final tx = b.x;
+      b.x = b.y;
+      b.y = tx;
+    }
+    for (final line in _lines) {
+      line.contact = _swapNormOffset(line.contact);
+      line.cueAnchor = _swapNormOffset(line.cueAnchor);
+      line.objAnchor = _swapNormOffset(line.objAnchor);
+      line.cueStartOverride = _swapNormOffsetNullable(line.cueStartOverride);
+      line.cueEndOverride = _swapNormOffsetNullable(line.cueEndOverride);
+      line.cueBounceEndOverride =
+          _swapNormOffsetNullable(line.cueBounceEndOverride);
+      line.cueBounce2EndOverride =
+          _swapNormOffsetNullable(line.cueBounce2EndOverride);
+      line.cueBounce3EndOverride =
+          _swapNormOffsetNullable(line.cueBounce3EndOverride);
+      line.objEndOverride = _swapNormOffsetNullable(line.objEndOverride);
+      line.objBounceEndOverride =
+          _swapNormOffsetNullable(line.objBounceEndOverride);
+    }
+  }
+
+  Offset _swapNormOffset(Offset p) => Offset(p.dy, p.dx);
+
+  Offset? _swapNormOffsetNullable(Offset? p) =>
+      p == null ? null : _swapNormOffset(p);
 
   /// SP: トレイは常に15球。既存配置は id で引き継ぐ。
   void _upgradeToFifteenBallSet() {
@@ -1507,6 +1596,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   @override
   void dispose() {
     _phoneZoomCtrl.dispose();
+    _refPhotoZoomCtrl.dispose();
     _tagCtrl.dispose();
     _memoCtrl.dispose();
     super.dispose();
@@ -1592,6 +1682,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     }
 
     var placed = 0;
+    final portraitFelt = _layoutUsesPortraitTable();
     setState(() {
       for (final b in _balls) {
         b.onTable = false;
@@ -1602,9 +1693,16 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         final detected = layout.balls[i];
         final ball = _balls.where((b) => b.def.id == id).firstOrNull;
         if (ball == null) continue;
+        final feltNorm = FeltHomography.detectionToFeltNorm(
+          detected.x,
+          detected.y,
+          cornersNorm: _refCornersNorm,
+          imageSize: _refImageSize,
+          portraitFelt: portraitFelt,
+        );
         ball
-          ..x = detected.x.clamp(0.0, 1.0)
-          ..y = detected.y.clamp(0.0, 1.0)
+          ..x = feltNorm.dx
+          ..y = feltNorm.dy
           ..onTable = true;
         placed++;
       }
@@ -1612,8 +1710,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _trajMode = false;
       _trajEditMode = false;
       _clearPhoneAxisGuides();
-      _status = _hasRefPhoto
-          ? '写真から $placed 球を配置 — 上の参照写真と比較しながら修正'
+      _status = _hasRefPhoto && _refPhotoOverlayActive
+          ? '左に元写真・右に図面 — ボールを直して「完了」'
           : '写真から $placed 球を配置（色ヒントで仮割当・要確認）';
     });
   }
@@ -2031,13 +2129,13 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final isPhone = media.size.shortestSide < 700;
-    final usePortraitLayout =
-        media.orientation == Orientation.portrait && media.size.width < 700;
-    final body = usePortraitLayout
-        ? _buildPortraitLayout(context)
+    final usePortraitPhoneLayout =
+        isPhone && media.orientation == Orientation.portrait;
+    final body = usePortraitPhoneLayout
+        ? _buildPortraitPhoneLayout(context)
         : isPhone
-            ? _buildLandscapeLayout(context, phoneOptimized: true)
-            : _buildDesktopPortraitLayout(context);
+            ? _buildLandscapePhoneLayout(context)
+            : _buildDesktopLayout(context);
     return Scaffold(
       appBar: buildAppleGlassAppBar(
         context,
@@ -2063,8 +2161,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
-  /// PC: portrait table (near-end view) + ball tray in a right column.
-  Widget _buildDesktopPortraitLayout(BuildContext context) {
+  /// PC: 横向き台 + 右トレイ。写真比較時は左に元写真。
+  Widget _buildDesktopLayout(BuildContext context) {
+    const tableAspect = 2.0;
     return Column(
       children: [
         const SizedBox(height: 12),
@@ -2076,12 +2175,17 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (_showRefComparison) ...[
+                  Expanded(
+                    flex: 2,
+                    child: _buildReferenceComparisonCard(compact: false),
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
-                  child: ClipRect(
-                    child: _buildTableArea(
-                      aspectRatio: 0.5,
-                      phone: false,
-                    ),
+                  flex: _showRefComparison ? 2 : 3,
+                  child: Center(
+                    child: _buildTableFitted(aspectRatio: tableAspect),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -2139,44 +2243,38 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
-  Widget _buildLandscapeLayout(BuildContext context,
-      {required bool phoneOptimized}) {
-    if (phoneOptimized) {
-      return Column(
-        children: [
-          const SizedBox(height: 10),
-          _buildTopControls(dense: true, showModeSelector: false),
-          const SizedBox(height: 6),
-          Expanded(
-            child: ClipRect(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                child: _buildTableArea(
-                  aspectRatio: _tableAspectForPhone(),
-                  phone: true,
-                ),
-              ),
-            ),
-          ),
-          _buildBottomControls(context, phoneLayout: true),
-        ],
-      );
-    }
-    // Fallback for wide short-side devices in landscape (rare).
+  /// SP 横向き: ランドスケープ台。
+  Widget _buildLandscapePhoneLayout(BuildContext context) {
+    const tableAspect = 2.0;
     return Column(
       children: [
-        const SizedBox(height: 12),
-        _buildTopControls(dense: false),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
+        _buildTopControls(dense: true, showModeSelector: false),
+        const SizedBox(height: 6),
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
-            child: Center(
-              child: _buildTableFitted(aspectRatio: 0.5),
+          child: ClipRect(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: _showRefComparison
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: _buildReferenceComparisonCard(compact: true),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildPhoneZoomableTable(
+                            aspectRatio: tableAspect,
+                          ),
+                        ),
+                      ],
+                    )
+                  : _buildPhoneZoomableTable(aspectRatio: tableAspect),
             ),
           ),
         ),
-        _buildBottomControls(context, compactInputs: false),
+        _buildBottomControls(context, phoneLayout: true),
       ],
     );
   }
@@ -2187,157 +2285,105 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _refCornersNorm != null &&
       _refCornersNorm!.length == 4;
 
-  /// SP: 検出座標と同じ俯瞰 2:1。PC 手前視点は従来どおり 1:2。
-  double _tableAspectForPhone() => TableGuideGeometry.playingAspect;
+  /// 図面フェルトの向き（layout 基準。_felt 寸法は使わない）。
+  bool _tableWarpPortrait() => _layoutUsesPortraitTable();
 
-  Widget _buildTableArea({required double aspectRatio, bool phone = false}) {
-    if (!_hasRefPhoto || !_showRefPhoto) {
-      return phone
-          ? _buildPhoneZoomableTable(aspectRatio: aspectRatio)
-          : _buildTableFitted(aspectRatio: aspectRatio);
+  bool get _showRefComparison => _hasRefPhoto && _refPhotoOverlayActive;
+
+  void _finishRefPhotoOverlay() {
+    setState(() {
+      _refPhotoOverlayActive = false;
+      _status = '参照写真を非表示にしました — 配置の確認・保存を続けてください';
+    });
+  }
+
+  void _scheduleRefWarp() {
+    if (!_hasRefPhoto) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _buildRefWarp());
+  }
+
+  bool _refWarpCacheValid(bool portrait) {
+    if (_refWarpedBytes == null || _refWarpW <= 0 || _refWarpH <= 0) {
+      return false;
     }
-    final portrait =
-        MediaQuery.of(context).orientation == Orientation.portrait;
-    if (phone && !portrait) {
-      return _buildRefPhotoSplitHorizontal(aspectRatio);
+    if (_refWarpCacheVersion != FeltWarpService.cacheVersion) return false;
+    if (_refWarpPortrait != portrait) return false;
+    final expectW = portrait ? FeltWarpService.feltShortPx : FeltWarpService.feltLongPx;
+    final expectH = portrait ? FeltWarpService.feltLongPx : FeltWarpService.feltShortPx;
+    return _refWarpW == expectW && _refWarpH == expectH;
+  }
+
+  Future<void> _buildRefWarp() async {
+    if (!_hasRefPhoto || _refWarping) return;
+    final portrait = _tableWarpPortrait();
+    if (_refWarpCacheValid(portrait)) return;
+    setState(() {
+      _refWarping = true;
+      _refWarpedBytes = null;
+      _refWarpW = 0;
+      _refWarpH = 0;
+    });
+    try {
+      final result = await FeltWarpService.warpToFelt(
+        imageBytes: _refImageBytes!,
+        cornersNorm: _refCornersNorm!,
+        imageSize: _refImageSize!,
+        portrait: portrait,
+      );
+      if (!mounted) return;
+      setState(() {
+        _refWarpedBytes = result?.bytes;
+        _refWarpW = result?.width ?? 0;
+        _refWarpH = result?.height ?? 0;
+        _refWarpCacheVersion = FeltWarpService.cacheVersion;
+        _refWarpPortrait = portrait;
+        _refWarping = false;
+        if (_refPhotoOverlayActive) {
+          _status = result != null
+              ? '左に元写真・右に図面 — ボールを直して「完了」'
+              : '写真の変換に失敗しました — 4隅を打ち直して再読込してください';
+        }
+      });
+      final layout = _refDetectedLayout;
+      if (layout != null && result != null) {
+        _applyDetectedLayout(layout);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _refWarping = false);
     }
-    return _buildRefPhotoSplitVertical(aspectRatio, phone: phone);
   }
 
-  Widget _buildRefPhotoSplitVertical(double aspectRatio, {required bool phone}) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final totalH = constraints.maxHeight;
-        final photoH = (totalH * _refPhotoFlex).clamp(80.0, totalH - 120.0);
-        final tableH = totalH - photoH - 6;
-        return Column(
-          children: [
-            SizedBox(height: photoH, child: _buildReferencePhotoPanel()),
-            GestureDetector(
-              onVerticalDragUpdate: (d) {
-                setState(() {
-                  _refPhotoFlex = (_refPhotoFlex + d.delta.dy / totalH)
-                      .clamp(0.22, 0.68);
-                });
-              },
-              child: Container(
-                height: 6,
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: const Center(
-                  child: Icon(Icons.drag_handle, size: 14, color: Colors.black38),
-                ),
-              ),
-            ),
-            SizedBox(
-              height: tableH,
-              child: phone
-                  ? _buildPhoneZoomableTable(aspectRatio: aspectRatio)
-                  : _buildTableFitted(aspectRatio: aspectRatio),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildRefPhotoSplitHorizontal(double aspectRatio) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final totalW = constraints.maxWidth;
-        final photoW = (totalW * 0.44).clamp(120.0, totalW - 160.0);
-        return Row(
-          children: [
-            SizedBox(width: photoW, child: _buildReferencePhotoPanel()),
-            const VerticalDivider(width: 1),
-            Expanded(
-              child: _buildPhoneZoomableTable(aspectRatio: aspectRatio),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildReferencePhotoPanel() {
-    final bytes = _refImageBytes!;
-    final imageSize = _refImageSize!;
-    final corners = _refCornersNorm!;
-    return Material(
-      color: Colors.black,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            color: Colors.black87,
-            child: Text(
-              '参照写真（ドラッグで比率変更）',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: Colors.white70,
-                    fontSize: 12,
-                  ),
-            ),
-          ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final maxW = constraints.maxWidth;
-                final maxH = constraints.maxHeight;
-                if (maxW <= 0 || maxH <= 0) return const SizedBox.shrink();
-                final scale = math.min(
-                  maxW / imageSize.width,
-                  maxH / imageSize.height,
-                );
-                final renderW = imageSize.width * scale;
-                final renderH = imageSize.height * scale;
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Center(
-                      child: SizedBox(
-                        width: renderW,
-                        height: renderH,
-                        child: Stack(
-                          clipBehavior: Clip.hardEdge,
-                          children: [
-                            Image.memory(bytes, fit: BoxFit.fill),
-                            CustomPaint(
-                              painter: _ReferenceBallOverlayPainter(
-                                balls: _balls
-                                    .where((b) => b.onTable)
-                                    .toList(growable: false),
-                                cornersNorm: corners,
-                                imageSize: imageSize,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPortraitLayout(BuildContext context) {
+  /// SP 縦向き: 常にポートレート台（1:2）。写真比較時も右ペインは縦台のまま。
+  Widget _buildPortraitPhoneLayout(BuildContext context) {
+    const tableAspect = 0.5;
     return Column(
       children: [
         const SizedBox(height: 4),
         _buildTopControls(dense: true, showModeSelector: false),
         Expanded(
-          child: ClipRect(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
-              child: _buildTableArea(
-                aspectRatio: _tableAspectForPhone(),
-                phone: true,
-              ),
-            ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+            child: _showRefComparison
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _buildReferenceComparisonCard(compact: true),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRect(
+                          child: _buildPhoneZoomableTable(
+                            aspectRatio: tableAspect,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : ClipRect(
+                    child: _buildPhoneZoomableTable(aspectRatio: tableAspect),
+                  ),
           ),
         ),
         _buildBottomControls(context, phoneLayout: true),
@@ -2383,6 +2429,78 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
+  Widget _buildReferenceComparisonCard({required bool compact}) {
+    final Widget content;
+    if (_refImageBytes == null || _refImageSize == null) {
+      content = const Center(child: Text('比較用の写真がありません'));
+    } else {
+      final imgW = _refImageSize!.width;
+      final imgH = _refImageSize!.height;
+      final imgAspect = imgW / imgH;
+      content = LayoutBuilder(
+        builder: (context, constraints) {
+          final maxW = constraints.maxWidth;
+          final maxH = constraints.maxHeight;
+          if (maxW <= 0 || maxH <= 0) return const SizedBox.shrink();
+
+          final double displayW;
+          final double displayH;
+          if (maxW / maxH > imgAspect) {
+            displayH = maxH;
+            displayW = displayH * imgAspect;
+          } else {
+            displayW = maxW;
+            displayH = displayW / imgAspect;
+          }
+          return InteractiveViewer(
+            transformationController: _refPhotoZoomCtrl,
+            minScale: 1.0,
+            maxScale: 5.0,
+            constrained: false,
+            boundaryMargin: const EdgeInsets.all(48),
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              width: displayW,
+              height: displayH,
+              child: Image.memory(
+                _refImageBytes!,
+                width: displayW,
+                height: displayH,
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.medium,
+                gaplessPlayback: false,
+              ),
+            ),
+          );
+        },
+      );
+    }
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_refImageBytes != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  'ピンチで拡大・ドラッグで移動',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            Expanded(child: content),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopControls({
     required bool dense,
     bool showModeSelector = true,
@@ -2418,13 +2536,12 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             ),
             SizedBox(height: spacing),
           ],
-          if (_hasRefPhoto) ...[
+          if (_showRefComparison) ...[
             Align(
               alignment: Alignment.centerLeft,
-              child: FilterChip(
-                label: Text(_showRefPhoto ? '参照写真 ON' : '参照写真 OFF'),
-                selected: _showRefPhoto,
-                onSelected: (v) => setState(() => _showRefPhoto = v),
+              child: FilledButton.tonal(
+                onPressed: _finishRefPhotoOverlay,
+                child: const Text('完了（比較写真を閉じる）'),
               ),
             ),
             SizedBox(height: spacing),
@@ -2718,13 +2835,69 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
   Widget _buildTableCanvas(Size sz) {
     _felt = BilliardsTablePainter.feltRectForSize(sz);
+    final showPhotoOverlay =
+        _renderRefOverlayOnTable && _hasRefPhoto && _refPhotoOverlayActive;
+    if (showPhotoOverlay &&
+        !_refWarping &&
+        !_refWarpCacheValid(_tableWarpPortrait())) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _buildRefWarp());
+    }
     return Stack(
       key: _tableStackKey,
       clipBehavior: Clip.hardEdge,
       children: [
+        if (showPhotoOverlay && _refWarpedBytes != null && _refWarpW > 0)
+          Positioned(
+            left: _felt.left,
+            top: _felt.top,
+            width: _felt.width,
+            height: _felt.height,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(
+                math.min(_felt.width, _felt.height) * 0.035,
+              ),
+              child: FittedBox(
+                fit: BoxFit.cover,
+                clipBehavior: Clip.hardEdge,
+                child: SizedBox(
+                  width: _refWarpW.toDouble(),
+                  height: _refWarpH.toDouble(),
+                  child: Image.memory(
+                    _refWarpedBytes!,
+                    width: _refWarpW.toDouble(),
+                    height: _refWarpH.toDouble(),
+                    fit: BoxFit.fill,
+                    key: ValueKey(
+                      'ref-warp-v${FeltWarpService.cacheVersion}-'
+                      '${_refWarpW}x$_refWarpH-${_refWarpedBytes!.length}',
+                    ),
+                    filterQuality: FilterQuality.medium,
+                    gaplessPlayback: false,
+                    isAntiAlias: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (showPhotoOverlay && _refWarping)
+          Positioned.fill(
+            child: ColoredBox(
+              color: Colors.black.withValues(alpha: 0.25),
+              child: const Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          ),
         Positioned.fill(
           child: CustomPaint(
-            painter: BilliardsTablePainter(feltRect: _felt),
+            painter: BilliardsTablePainter(
+              feltRect: _felt,
+              photoOverlayMode: showPhotoOverlay,
+            ),
           ),
         ),
         Positioned.fill(
@@ -3173,54 +3346,4 @@ class _SavedLayoutsScreenState extends State<SavedLayoutsScreen> {
             ),
     );
   }
-}
-
-class _ReferenceBallOverlayPainter extends CustomPainter {
-  _ReferenceBallOverlayPainter({
-    required this.balls,
-    required this.cornersNorm,
-    required this.imageSize,
-  });
-
-  final List<BallInstance> balls;
-  final List<List<double>> cornersNorm;
-  final Size imageSize;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..color = Colors.white;
-    final fill = Paint()..color = const Color(0xAAFF9500);
-
-    for (final ball in balls) {
-      final norm = FeltHomography.warpNormToImageNorm(
-        Offset(ball.x, ball.y),
-        cornersNorm,
-        imageSize,
-      );
-      if (norm == null) continue;
-      final cx = norm.dx * size.width;
-      final cy = norm.dy * size.height;
-      final r = math.min(size.width, size.height) * 0.018;
-      canvas.drawCircle(Offset(cx, cy), r, fill);
-      canvas.drawCircle(Offset(cx, cy), r, stroke);
-      final tp = TextPainter(
-        text: TextSpan(
-          text: ball.def.label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(cx - tp.width / 2, cy - tp.height / 2));
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ReferenceBallOverlayPainter old) => true;
 }

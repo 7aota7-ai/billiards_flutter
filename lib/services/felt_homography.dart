@@ -43,6 +43,89 @@ class FeltHomography {
     return [tl, tr, br, bl];
   }
 
+  /// API 検出座標 → フェルト正規化座標。
+  ///
+  /// オーバーレイはタップ順ワープ、API は [orderCorners] 後の軸で検出する。
+  /// 台形写真で並べ替えが入ると API の x/y が入れ替わるため補正する。
+  static Offset detectionToFeltNorm(
+    double detectionX,
+    double detectionY, {
+    List<List<double>>? cornersNorm,
+    Size? imageSize,
+    required bool portraitFelt,
+  }) {
+    final dx = detectionX.clamp(0.0, 1.0);
+    final dy = detectionY.clamp(0.0, 1.0);
+    final axesSwapped = cornersNorm != null &&
+        imageSize != null &&
+        cornersNorm.length == 4 &&
+        !_tapOrderMatchesOrdered(cornersNorm, imageSize);
+
+    if (portraitFelt) {
+      return axesSwapped ? Offset(dy, dx) : Offset(dx, dy);
+    }
+    return axesSwapped ? Offset(dx, dy) : Offset(dy, dx);
+  }
+
+  /// orderCorners がタップ順 ①〜④ を変えたら true（API 軸が入れ替わる）。
+  static bool _tapOrderMatchesOrdered(
+    List<List<double>> cornersNorm,
+    Size imageSize,
+  ) {
+    final tap = cornersFromTapOrder(cornersNorm, imageSize);
+    final ordered = orderCorners(tap);
+    for (var i = 0; i < 4; i++) {
+      if ((tap[i] - ordered[i]).distance > 1.5) return false;
+    }
+    return true;
+  }
+
+  /// 写真読込のタップ順（①〜④）をピクセル座標に変換。
+  static List<Offset> cornersFromTapOrder(
+    List<List<double>> cornersNorm,
+    Size imageSize,
+  ) {
+    return cornersNorm
+        .map(
+          (p) => Offset(
+            p[0] * imageSize.width,
+            p[1] * imageSize.height,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  static Offset applyMatrix(List<List<double>> h, Offset p) => _apply(h, p);
+
+  static List<List<double>> homographyFrom4Points(
+    List<Offset> src,
+    List<Offset> dst,
+  ) =>
+      _homographyFrom4Points(src, dst);
+
+  static List<List<double>>? invert3x3(List<List<double>> m) {
+    final a = m[0][0], b = m[0][1], c = m[0][2];
+    final d = m[1][0], e = m[1][1], f = m[1][2];
+    final g = m[2][0], h = m[2][1], i = m[2][2];
+    final A = e * i - f * h;
+    final B = -(d * i - f * g);
+    final C = d * h - e * g;
+    final D = -(b * i - c * h);
+    final E = a * i - c * g;
+    final F = -(a * h - b * g);
+    final G = b * f - c * e;
+    final H = -(a * f - c * d);
+    final I = a * e - b * d;
+    final det = a * A + b * B + c * C;
+    if (det.abs() < 1e-12) return null;
+    final invDet = 1.0 / det;
+    return [
+      [A * invDet, D * invDet, G * invDet],
+      [B * invDet, E * invDet, H * invDet],
+      [C * invDet, F * invDet, I * invDet],
+    ];
+  }
+
   /// Normalized felt coords (0–1 on 2000×1000 warp) → normalized image coords.
   static Offset? warpNormToImageNorm(
     Offset warpNorm,

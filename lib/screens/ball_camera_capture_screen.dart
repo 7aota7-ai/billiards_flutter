@@ -26,7 +26,7 @@ class BallCameraCaptureScreen extends StatefulWidget {
 
 class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
   BallDetectionService _detectionService =
-      BallDetectionService(baseUrl: DetectionApiSettings.defaultUrl);
+      BallDetectionService(baseUrl: DetectionApiSettings.runtimeDefaultUrl);
   final _previewKey = GlobalKey();
   final _imagePicker = ImagePicker();
 

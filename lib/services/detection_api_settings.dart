@@ -19,10 +19,21 @@ class DetectionApiSettings {
 
   static const _key = 'ball_detection_api_base_url';
 
+  static bool get _isLocalDevHost {
+    final host = Uri.base.host;
+    return host == 'localhost' || host == '127.0.0.1';
+  }
+
+  /// Web on localhost → local uvicorn; GitHub Pages → Cloud Run.
+  static String get runtimeDefaultUrl {
+    if (kIsWeb && _isLocalDevHost) return localUrl;
+    return defaultUrl;
+  }
+
   static Future<String> loadBaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_key);
-    if (saved == null || saved.trim().isEmpty) return defaultUrl;
+    if (saved == null || saved.trim().isEmpty) return runtimeDefaultUrl;
     final normalized = _normalize(saved.trim());
 
     // Migrate old local HTTP setting on HTTPS web to the new Cloud Run default.
@@ -32,6 +43,13 @@ class DetectionApiSettings {
     if (shouldForceDefaultOnHttpsWeb) {
       await prefs.setString(_key, defaultUrl);
       return defaultUrl;
+    }
+
+    // flutter run -d chrome: use local API unless user saved a custom URL.
+    if (kIsWeb &&
+        _isLocalDevHost &&
+        normalized == _normalize(cloudRunUrl)) {
+      return localUrl;
     }
     return normalized;
   }

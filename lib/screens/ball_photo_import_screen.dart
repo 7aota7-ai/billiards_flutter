@@ -34,7 +34,7 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
   static const _guideCorners = TableGuideGeometry.defaultPhotoCorners;
 
   BallDetectionService _service =
-      BallDetectionService(baseUrl: DetectionApiSettings.defaultUrl);
+      BallDetectionService(baseUrl: DetectionApiSettings.runtimeDefaultUrl);
   final _jsonCtrl = TextEditingController();
 
   Uint8List? _imageBytes;
