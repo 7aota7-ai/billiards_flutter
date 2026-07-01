@@ -3003,7 +3003,20 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
                         (p.dy - (_felt.top + axisBall.y * _felt.height)).abs() <=
                             22);
                 if (!hitBall && !hitAxis) {
-                  setState(_clearPhoneAxisGuides);
+                  setState(() {
+                    _clearPhoneAxisGuides();
+                    _dragBallId = null;
+                  });
+                }
+              } else if (!_trajMode && _dragBallId != null) {
+                final p = e.localPosition;
+                final hitBall = _balls.any(
+                  (b) =>
+                      b.onTable &&
+                      _isNearBallCenter(p, b, _ballRadiusPx() * 1.5),
+                );
+                if (!hitBall) {
+                  setState(() => _dragBallId = null);
                 }
               }
               if (!_trajMode || !_trajEditMode) return;
@@ -3164,10 +3177,14 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
           }
         },
         onPanEnd: (_) {
-          _dragBallId = null;
+          if (_dragBallId == b.def.id) {
+            setState(() => _dragBallId = null);
+          }
         },
         onPanCancel: () {
-          _dragBallId = null;
+          if (_dragBallId == b.def.id) {
+            setState(() => _dragBallId = null);
+          }
         },
         child: Center(
           child: AnimatedScale(
