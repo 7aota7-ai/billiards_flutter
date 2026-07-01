@@ -121,8 +121,8 @@ class BallTableScale {
   /// Regulation pool ball radius / felt long-side width (≈2.25" Ø on ~100" table).
   static const double regulationRadiusNorm = 0.01125;
 
-  /// Desktop: ~3.2× real (1.8× previous). Phone: touch targets.
-  static const double _desktopVisualScale = 1.8 * 1.8;
+  /// Desktop: regulation size (mouse). Phone: enlarged for touch targets.
+  static const double _desktopVisualScale = 1.0;
 
   static double radiusNorm({required bool phone}) =>
       regulationRadiusNorm *
@@ -130,7 +130,7 @@ class BallTableScale {
 
   static double radiusPx(Rect felt, {required bool phone}) {
     final r = felt.width * radiusNorm(phone: phone);
-    final floor = phone ? 10.5 : 6.0 * 1.8;
+    final floor = phone ? 10.5 : 6.0;
     return math.max(r, floor);
   }
 }
@@ -1549,7 +1549,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     final savedPortrait = widget.initialLayout?.coordPortrait;
     final currentPortrait = _layoutUsesPortraitTable();
     if (savedPortrait != null && savedPortrait != currentPortrait) {
-      _swapFeltNormalizedCoords();
+      _remapFeltCoordsForLayout(
+        fromPortrait: savedPortrait,
+        toPortrait: currentPortrait,
+      );
     }
     _feltCoordsPortrait = currentPortrait;
   }
@@ -1558,7 +1561,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     if (!_coordSpaceReady) return;
     final portrait = _layoutUsesPortraitTable();
     if (_feltCoordsPortrait != null && _feltCoordsPortrait != portrait) {
-      _swapFeltNormalizedCoords();
+      _remapFeltCoordsForLayout(
+        fromPortrait: _feltCoordsPortrait!,
+        toPortrait: portrait,
+      );
       _phoneZoomDidInitialFit = false;
       _phoneZoomFitKey = null;
       _phoneZoomCtrl.value = Matrix4.identity();
@@ -1567,36 +1573,75 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     _feltCoordsPortrait = portrait;
   }
 
-  /// 縦台↔横台でフェルト正規化軸が入れ替わる: (x,y)→(y,x)。
-  void _swapFeltNormalizedCoords() {
+  void _remapFeltCoordsForLayout({
+    required bool fromPortrait,
+    required bool toPortrait,
+  }) {
+    if (fromPortrait == toPortrait) return;
     for (final b in _balls) {
       if (!b.onTable) continue;
-      final tx = b.x;
-      b.x = b.y;
-      b.y = tx;
+      final src = Offset(b.x, b.y);
+      final dst = fromPortrait
+          ? FeltHomography.portraitFeltNormToLandscape(src)
+          : FeltHomography.landscapeFeltNormToPortrait(src);
+      b.x = dst.dx.clamp(0.0, 1.0);
+      b.y = dst.dy.clamp(0.0, 1.0);
     }
     for (final line in _lines) {
-      line.contact = _swapNormOffset(line.contact);
-      line.cueAnchor = _swapNormOffset(line.cueAnchor);
-      line.objAnchor = _swapNormOffset(line.objAnchor);
-      line.cueStartOverride = _swapNormOffsetNullable(line.cueStartOverride);
-      line.cueEndOverride = _swapNormOffsetNullable(line.cueEndOverride);
-      line.cueBounceEndOverride =
-          _swapNormOffsetNullable(line.cueBounceEndOverride);
-      line.cueBounce2EndOverride =
-          _swapNormOffsetNullable(line.cueBounce2EndOverride);
-      line.cueBounce3EndOverride =
-          _swapNormOffsetNullable(line.cueBounce3EndOverride);
-      line.objEndOverride = _swapNormOffsetNullable(line.objEndOverride);
-      line.objBounceEndOverride =
-          _swapNormOffsetNullable(line.objBounceEndOverride);
+      line.contact = _remapNormOffset(line.contact, fromPortrait, toPortrait);
+      line.cueAnchor = _remapNormOffset(line.cueAnchor, fromPortrait, toPortrait);
+      line.objAnchor = _remapNormOffset(line.objAnchor, fromPortrait, toPortrait);
+      line.cueStartOverride = _remapNormOffsetNullable(
+        line.cueStartOverride,
+        fromPortrait,
+        toPortrait,
+      );
+      line.cueEndOverride = _remapNormOffsetNullable(
+        line.cueEndOverride,
+        fromPortrait,
+        toPortrait,
+      );
+      line.cueBounceEndOverride = _remapNormOffsetNullable(
+        line.cueBounceEndOverride,
+        fromPortrait,
+        toPortrait,
+      );
+      line.cueBounce2EndOverride = _remapNormOffsetNullable(
+        line.cueBounce2EndOverride,
+        fromPortrait,
+        toPortrait,
+      );
+      line.cueBounce3EndOverride = _remapNormOffsetNullable(
+        line.cueBounce3EndOverride,
+        fromPortrait,
+        toPortrait,
+      );
+      line.objEndOverride = _remapNormOffsetNullable(
+        line.objEndOverride,
+        fromPortrait,
+        toPortrait,
+      );
+      line.objBounceEndOverride = _remapNormOffsetNullable(
+        line.objBounceEndOverride,
+        fromPortrait,
+        toPortrait,
+      );
     }
   }
 
-  Offset _swapNormOffset(Offset p) => Offset(p.dy, p.dx);
+  Offset _remapNormOffset(Offset p, bool fromPortrait, bool toPortrait) {
+    if (fromPortrait == toPortrait) return p;
+    return fromPortrait
+        ? FeltHomography.portraitFeltNormToLandscape(p)
+        : FeltHomography.landscapeFeltNormToPortrait(p);
+  }
 
-  Offset? _swapNormOffsetNullable(Offset? p) =>
-      p == null ? null : _swapNormOffset(p);
+  Offset? _remapNormOffsetNullable(
+    Offset? p,
+    bool fromPortrait,
+    bool toPortrait,
+  ) =>
+      p == null ? null : _remapNormOffset(p, fromPortrait, toPortrait);
 
   /// SP: トレイは常に15球。既存配置は id で引き継ぐ。
   void _upgradeToFifteenBallSet() {

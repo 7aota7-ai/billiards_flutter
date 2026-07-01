@@ -278,7 +278,14 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
   Future<void> _runDetection() async {
     if (_imageBytes == null || _corners.length != 4) return;
     if (!_cornerSpanOk) {
-      _showSnack('4隅が台全体を囲えていません。全画面で打ち直すか、遠い角→手前角まで広げてください');
+      final ys = _normalizedCorners().map((p) => p[1]);
+      final ySpan = ys.reduce((a, b) => a > b ? a : b) -
+          ys.reduce((a, b) => a < b ? a : b);
+      _showSnack(
+        '4隅の縦幅が足りません（y幅=${ySpan.toStringAsFixed(2)}、'
+        '目安 ${TableGuideGeometry.minCornerYSpan} 以上）。'
+        '③④を手前のフェルト角（y≈${TableGuideGeometry.nearYNorm.toStringAsFixed(2)}）まで下げてください',
+      );
       return;
     }
     setState(() {
@@ -460,7 +467,10 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
                     child: const Text('4点リセット'),
                   ),
                   FilledButton(
-                    onPressed: (_busy || _corners.length != 4 || !_serverOk)
+                    onPressed: (_busy ||
+                            _corners.length != 4 ||
+                            !_cornerSpanOk ||
+                            !_serverOk)
                         ? null
                         : _runDetection,
                     child: Text(_busy ? '検出中…' : 'API で検出'),

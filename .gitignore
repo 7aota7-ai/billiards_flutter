@@ -12,6 +12,11 @@ build/
 .idea/
 .vscode/
 
+# Google Workspace CLI (local credentials — never commit)
+.cursor/gws.env
+**/client_secret.json
+**/credentials.json
+
 # OS
 Thumbs.db
 .DS_Store

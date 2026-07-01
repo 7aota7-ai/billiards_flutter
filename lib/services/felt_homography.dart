@@ -75,7 +75,8 @@ class FeltHomography {
     required bool portraitFelt,
   }) {
     if (portraitFelt) {
-      return Offset(warp.alongShort, warp.alongLong);
+      // 横台の短辺(y)と縦台の短辺(x)で向きが逆のため 1−short。
+      return Offset(1.0 - warp.alongShort, warp.alongLong);
     }
     return Offset(warp.alongLong, warp.alongShort);
   }
@@ -86,10 +87,24 @@ class FeltHomography {
     required bool portraitFelt,
   }) {
     if (portraitFelt) {
-      return (alongLong: feltNorm.dy, alongShort: feltNorm.dx);
+      return (alongLong: feltNorm.dy, alongShort: 1.0 - feltNorm.dx);
     }
     return (alongLong: feltNorm.dx, alongShort: feltNorm.dy);
   }
+
+  /// 横台フェルト正規化 → 縦台フェルト正規化（同一ワープ位置を保つ）。
+  static Offset landscapeFeltNormToPortrait(Offset landscape) =>
+      feltNormFromWarpAxes(
+        feltNormToWarpAxes(landscape, portraitFelt: false),
+        portraitFelt: true,
+      );
+
+  /// 縦台フェルト正規化 → 横台フェルト正規化。
+  static Offset portraitFeltNormToLandscape(Offset portrait) =>
+      feltNormFromWarpAxes(
+        feltNormToWarpAxes(portrait, portraitFelt: true),
+        portraitFelt: false,
+      );
 
   /// 写真読込のタップ順（①〜④）をピクセル座標に変換。
   static List<Offset> cornersFromTapOrder(

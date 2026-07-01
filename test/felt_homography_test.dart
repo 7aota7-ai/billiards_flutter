@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:billiards_flutter/services/felt_homography.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -14,7 +16,7 @@ void main() {
     expect(norm.dy, closeTo(apiY, 1e-9));
   });
 
-  test('portrait felt swaps long/short axes', () {
+  test('portrait felt mirrors short axis vs landscape', () {
     const apiX = 0.713;
     const apiY = 0.311;
     final norm = FeltHomography.detectionToFeltNorm(
@@ -22,8 +24,16 @@ void main() {
       apiY,
       portraitFelt: true,
     );
-    expect(norm.dx, closeTo(apiY, 1e-9));
+    expect(norm.dx, closeTo(1.0 - apiY, 1e-9));
     expect(norm.dy, closeTo(apiX, 1e-9));
+  });
+
+  test('landscape and portrait round-trip through warp axes', () {
+    const landscape = Offset(0.25, 0.62);
+    final portrait = FeltHomography.landscapeFeltNormToPortrait(landscape);
+    final back = FeltHomography.portraitFeltNormToLandscape(portrait);
+    expect(back.dx, closeTo(landscape.dx, 1e-9));
+    expect(back.dy, closeTo(landscape.dy, 1e-9));
   });
 
   test('portrait and landscape felt norms map to same warp axes', () {

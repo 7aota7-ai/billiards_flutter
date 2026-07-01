@@ -31,8 +31,14 @@ class TableGuideGeometry {
   static const nearYNorm = 0.694;
   static const nearHalfWidthNorm = 0.482;
 
-  /// Minimum normalized Y span between far and near corners (photo import validation).
-  static const minCornerYSpan = 0.32;
+  /// Guide trapezoid height in normalized Y (TL/TR → BL/BR).
+  static const guideCornerYSpan = nearYNorm - farYNorm;
+
+  /// Minimum Y span for photo-import validation.
+  ///
+  /// Must stay below [guideCornerYSpan] — otherwise corners placed on the yellow
+  /// guides (or camera handoff defaults) fail with「4隅が台全体を囲えていません」.
+  static const minCornerYSpan = 0.28;
 
   static List<Offset> guideCornersNormalized() {
     const farHalf = nearHalfWidthNorm * farNearWidthRatio;
