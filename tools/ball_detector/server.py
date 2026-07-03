@@ -18,7 +18,7 @@ from starlette.responses import JSONResponse
 
 from detect_balls import detect_from_array
 
-APP_VERSION = "0.1.6"
+APP_VERSION = "0.1.7"
 
 # --- Config (env overrides for Cloud Run) ---
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))

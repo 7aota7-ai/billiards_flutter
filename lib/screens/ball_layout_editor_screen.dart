@@ -1445,6 +1445,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
   bool get _isPhone => MediaQuery.of(context).size.shortestSide < 700;
 
+  bool get _refPhotoIsPortrait =>
+      _refImageSize != null && _refImageSize!.height > _refImageSize!.width;
+
   void _clearPhoneAxisGuides() {
     _spAxisBallId = null;
     _dragAxisX = false;
@@ -1534,8 +1537,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     }
   }
 
-  /// SP 縦=ポートレート台、SP 横・PC=ランドスケープ台（layout 基準で座標系を固定）。
+  /// SP 縦=ポートレート台、SP 横・PC=ランドスケープ台。
+  /// 縦撮影の参照写真があるときは PC も縦台（SP と同じ座標系）に揃える。
   bool _layoutUsesPortraitTable() {
+    if (_refPhotoIsPortrait) return true;
     if (!_isPhone) return false;
     return MediaQuery.of(context).orientation == Orientation.portrait;
   }
@@ -2232,9 +2237,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     );
   }
 
-  /// PC: 横向き台 + 右トレイ。写真比較時は左に元写真。
+  /// PC: 参照写真が縦なら縦台、それ以外は横台 + 右トレイ。
   Widget _buildDesktopLayout(BuildContext context) {
-    const tableAspect = 2.0;
+    final tableAspect = _layoutUsesPortraitTable() ? 0.5 : 2.0;
     return Column(
       children: [
         const SizedBox(height: 12),

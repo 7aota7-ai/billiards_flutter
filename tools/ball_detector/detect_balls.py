@@ -24,7 +24,7 @@ FILTER_MAX_BALLS = 15
 FILTER_MIN_SEP_FACTOR = 2.0
 MIN_BALL_SCORE = 2.2
 EXPECTED_BALL_RADIUS_RATIO = 0.0225  # ~57 mm dia on 127 cm playing width
-DETECTOR_VERSION = "0.1.6"
+DETECTOR_VERSION = "0.1.7"
 
 CORNER_LABELS = ("top-left", "top-right", "bottom-right", "bottom-left")
 
@@ -62,7 +62,10 @@ def _order_corners(pts: list[list[float]]) -> np.ndarray:
 
 
 def warp_felt(image: np.ndarray, corners: list[list[float]]) -> tuple[np.ndarray, np.ndarray]:
-    src = _order_corners(corners)
+    """Warp felt to 2000×1000. Corners must be TL, TR, BR, BL (Flutter ①〜④ tap order)."""
+    src = np.array(corners, dtype=np.float32)
+    if src.shape != (4, 2):
+        raise ValueError("corners must be 4 (x, y) pairs")
     dst = np.float32(
         [
             [0, 0],

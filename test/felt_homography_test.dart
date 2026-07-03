@@ -61,4 +61,22 @@ void main() {
     expect(fromLandscape.alongLong, closeTo(warp.alongLong, 1e-9));
     expect(fromLandscape.alongShort, closeTo(warp.alongShort, 1e-9));
   });
+
+  test('warp origin maps to tap-order TL on steep portrait photo', () {
+    const cornersNorm = [
+      [0.32, 0.37],
+      [0.68, 0.374],
+      [0.969, 0.673],
+      [0.012, 0.656],
+    ];
+    const imageSize = Size(1536, 2048);
+    final imageNorm = FeltHomography.warpNormToImageNorm(
+      Offset.zero,
+      cornersNorm,
+      imageSize,
+    );
+    expect(imageNorm, isNotNull);
+    expect(imageNorm!.dx, closeTo(0.32, 0.02));
+    expect(imageNorm.dy, closeTo(0.37, 0.02));
+  });
 }
