@@ -1507,6 +1507,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _refDetectedLayout = pending.layout;
       if (_refImageBytes != null) {
         _refPhotoOverlayActive = true;
+        _renderRefOverlayOnTable = true;
         _refPhotoZoomCtrl.value = Matrix4.identity();
       }
       _scheduleRefWarp();
@@ -1536,7 +1537,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   }
 
   /// SP 縦=ポートレート台、SP 横・PC=ランドスケープ台（layout 基準で座標系を固定）。
+  /// 写真比較中は PC/SP とも横台に統一し、同一検出座標で並べて確認できるようにする。
   bool _layoutUsesPortraitTable() {
+    if (_showRefComparison) return false;
     if (!_isPhone) return false;
     return MediaQuery.of(context).orientation == Orientation.portrait;
   }
@@ -2420,9 +2423,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     }
   }
 
-  /// SP 縦向き: 常にポートレート台（1:2）。写真比較時も右ペインは縦台のまま。
+  /// SP 縦向き: 通常はポートレート台（1:2）。写真比較時のみ PC と同じ横台（2:1）。
   Widget _buildPortraitPhoneLayout(BuildContext context) {
-    const tableAspect = 0.5;
+    final tableAspect = _showRefComparison ? 2.0 : 0.5;
     return Column(
       children: [
         const SizedBox(height: 4),
@@ -2528,13 +2531,30 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             child: SizedBox(
               width: displayW,
               height: displayH,
-              child: Image.memory(
-                _refImageBytes!,
-                width: displayW,
-                height: displayH,
-                fit: BoxFit.fill,
-                filterQuality: FilterQuality.medium,
-                gaplessPlayback: false,
+              child: Stack(
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  Image.memory(
+                    _refImageBytes!,
+                    width: displayW,
+                    height: displayH,
+                    fit: BoxFit.fill,
+                    filterQuality: FilterQuality.medium,
+                    gaplessPlayback: false,
+                  ),
+                  if (_refDetectedLayout != null &&
+                      _refCornersNorm != null &&
+                      _refImageSize != null)
+                    CustomPaint(
+                      size: Size(displayW, displayH),
+                      painter: _RefDetectionOverlayPainter(
+                        balls: _refDetectedLayout!.balls,
+                        cornersNorm: _refCornersNorm!,
+                        imageSize: _refImageSize!,
+                        renderSize: Size(displayW, displayH),
+                      ),
+                    ),
+                ],
               ),
             ),
           );
@@ -3334,6 +3354,54 @@ class _GuideLinePainter extends CustomPainter {
       oldDelegate.isVertical != isVertical ||
       oldDelegate.color != color ||
       oldDelegate.active != active;
+}
+
+/// 参照写真上に API 検出位置を逆ホモグラフィで重ねる。
+class _RefDetectionOverlayPainter extends CustomPainter {
+  _RefDetectionOverlayPainter({
+    required this.balls,
+    required this.cornersNorm,
+    required this.imageSize,
+    required this.renderSize,
+  });
+
+  final List<DetectedBall> balls;
+  final List<List<double>> cornersNorm;
+  final Size imageSize;
+  final Size renderSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (balls.isEmpty || cornersNorm.length != 4) return;
+
+    final fill = Paint()..color = const Color(0x8800E676);
+    final stroke = Paint()
+      ..color = const Color(0xFF00E676)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    for (final ball in balls) {
+      final imageNorm = FeltHomography.warpNormToImageNorm(
+        Offset(ball.x, ball.y),
+        cornersNorm,
+        imageSize,
+      );
+      if (imageNorm == null) continue;
+      final pt = Offset(
+        imageNorm.dx * renderSize.width,
+        imageNorm.dy * renderSize.height,
+      );
+      canvas.drawCircle(pt, 10, fill);
+      canvas.drawCircle(pt, 10, stroke);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RefDetectionOverlayPainter oldDelegate) =>
+      oldDelegate.balls != balls ||
+      oldDelegate.cornersNorm != cornersNorm ||
+      oldDelegate.imageSize != imageSize ||
+      oldDelegate.renderSize != renderSize;
 }
 
 class SavedLayoutsScreen extends StatefulWidget {
