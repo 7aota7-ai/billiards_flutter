@@ -58,7 +58,14 @@ class ColorAndGlareTests(unittest.TestCase):
             [[20, 180, 180], [22, 170, 170], [18, 175, 165]],
             dtype=np.uint8,
         )
-        self.assertFalse(_is_glare_patch(pixels))
+        self.assertFalse(_is_glare_patch(pixels, texture_std=22.0))
+
+    def test_white_ball_not_glare_with_texture(self) -> None:
+        pixels = np.array(
+            [[0, 20, 230], [0, 25, 240], [0, 15, 220]],
+            dtype=np.uint8,
+        )
+        self.assertFalse(_is_glare_patch(pixels, texture_std=18.0))
 
     def test_yellow_ball_color(self) -> None:
         bgr = np.zeros((80, 80, 3), dtype=np.uint8)
@@ -109,7 +116,7 @@ class SampleImageSmokeTests(unittest.TestCase):
         corners = json.loads(corners_path.read_text(encoding="utf-8"))
         result = detect_from_array(image, corners, source_name="table_photo.png")
         self.assertGreaterEqual(result["meta"]["ball_count"], 5)
-        self.assertEqual(result["meta"]["detector_version"], "0.1.5")
+        self.assertEqual(result["meta"]["detector_version"], "0.1.6")
 
     def test_hall_end_view_photo(self) -> None:
         root = Path(__file__).resolve().parent
@@ -124,6 +131,24 @@ class SampleImageSmokeTests(unittest.TestCase):
         self.assertGreaterEqual(result["meta"]["ball_count"], 6)
         colors = {b["color"] for b in result["balls"]}
         self.assertTrue(colors - {"unknown"})
+
+    def test_user_end_view_corners_on_hall_photo(self) -> None:
+        root = Path(__file__).resolve().parent
+        image_path = root / "samples" / "S__194953223_0.jpg"
+        corners_path = root / "samples" / "user_end_view_corners.json"
+        if not image_path.exists() or not corners_path.exists():
+            self.skipTest("user corner fixture missing")
+
+        image = cv2.imread(str(image_path))
+        corners = json.loads(corners_path.read_text(encoding="utf-8"))
+        result = detect_from_array(
+            image,
+            corners,
+            source_name=image_path.name,
+            ref_width=1536,
+            ref_height=2048,
+        )
+        self.assertGreaterEqual(result["meta"]["ball_count"], 7)
 
 
 if __name__ == "__main__":

@@ -128,7 +128,7 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
       return '${layout.balls.length} 球を検出（フィルタ前 $raw 個） $suffix';
     }
     if (!hasFilterMeta && layout.balls.length > 15) {
-      return '${layout.balls.length} 球を検出 — API v0.1.5 未適用？ '
+      return '${layout.balls.length} 球を検出 — API v0.1.6 未適用？ '
           'uvicorn を再起動してください $suffix';
     }
     return '${layout.balls.length} 球を検出 $suffix';

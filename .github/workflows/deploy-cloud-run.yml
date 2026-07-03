@@ -48,4 +48,4 @@ jobs:
             --format='value(status.url)')
           echo "API URL: ${URL}"
           curl -sf "${URL}/health" | tee health.json
-          python3 -c "import json; h=json.load(open('health.json')); assert h.get('version')>='0.1.5', h"
+          python3 -c "import json; h=json.load(open('health.json')); assert h.get('version')>='0.1.6', h"

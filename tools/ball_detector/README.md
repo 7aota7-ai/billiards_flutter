@@ -102,9 +102,16 @@ python detect_balls.py -i samples/table_photo.png --pick-corners -o out/result.j
 python detect_balls.py -i samples/table_photo.png -c corners.json -o out/result.json
 ```
 
-## 検出アルゴリズム (v0.1.5)
+## 検出アルゴリズム (v0.1.6)
 
-v0.1.5 の主な改善:
+v0.1.6 の主な改善（9球取りこぼし対策）:
+
+1. **白球をグレア誤除外しない** — テクスチャ（縁）がある白球は残す
+2. **青台の青球** — 同色でも Sobel 円周エッジで検出
+3. **多段パス統合** — strict + relaxed + bare を常にマージ
+4. **上限 15 球** — 9球ラック + 手玉向け
+
+v0.1.5 の改善:
 
 1. **緑台対応** — 青台だけでなく緑台のフェルトマスクを自動選択
 2. **候補スコアリング** — サイズ・彩度・円周リング・反射除外で誤検出を抑制
