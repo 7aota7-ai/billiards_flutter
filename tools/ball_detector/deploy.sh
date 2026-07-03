@@ -16,8 +16,8 @@ VERSION="$(grep '^APP_VERSION' tools/ball_detector/server.py | sed 's/.*= *"\(.*
 GIT_SHA="$(git rev-parse --short HEAD)"
 echo "==> local version: ${VERSION}  git: ${GIT_SHA}"
 
-if [[ "$VERSION" < "0.1.6" ]]; then
-  echo "ERROR: server.py が古い (${VERSION})。git pull 後も 0.1.6 未満なら main を確認してください。" >&2
+if [[ "$VERSION" < "0.1.7" ]]; then
+  echo "ERROR: server.py が古い (${VERSION})。git pull 後も 0.1.7 未満なら main を確認してください。" >&2
   exit 1
 fi
 
@@ -51,7 +51,7 @@ python3 - <<'PY'
 import json, sys
 h = json.load(open("/tmp/ball-detector-health.json"))
 v = h.get("version", "")
-if v < "0.1.6":
+if v < "0.1.7":
     print(f"ERROR: deployed version is still {v!r}", file=sys.stderr)
     sys.exit(1)
 print(f"OK: version={v} git_sha={h.get('git_sha')}")

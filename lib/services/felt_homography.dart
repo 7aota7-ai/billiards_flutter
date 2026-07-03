@@ -165,11 +165,7 @@ class FeltHomography {
       Offset(warpWidth - 1, warpHeight - 1),
       Offset(0, warpHeight - 1),
     ];
-    final imageCorners = orderCorners(
-      cornersNorm
-          .map((p) => Offset(p[0] * imageSize.width, p[1] * imageSize.height))
-          .toList(growable: false),
-    );
+    final imageCorners = cornersFromTapOrder(cornersNorm, imageSize);
     final h = _homographyFrom4Points(warpCorners, imageCorners);
     final warpPx = Offset(
       warpNorm.dx.clamp(0.0, 1.0) * warpWidth,

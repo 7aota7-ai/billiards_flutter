@@ -18,6 +18,7 @@ from detect_balls import (  # noqa: E402
     _classify_color,
     _cloth_masks,
     _is_glare_patch,
+    _order_corners,
     _sample_annulus_hsv,
     _score_ball_candidate,
     detect_balls,
@@ -73,6 +74,37 @@ class ColorAndGlareTests(unittest.TestCase):
         self.assertEqual(_classify_color(bgr, 40, 40, 18), "yellow")
 
 
+class WarpCornerOrderTests(unittest.TestCase):
+    def test_steep_photo_geometric_reorder_differs_from_tap_order(self) -> None:
+        corners_norm = [
+            [0.32, 0.37],
+            [0.68, 0.374],
+            [0.969, 0.673],
+            [0.012, 0.656],
+        ]
+        w, h = 1536, 2048
+        pixel = [[c[0] * w, c[1] * h] for c in corners_norm]
+        geo = _order_corners(corners_norm)
+        self.assertFalse(np.allclose(geo[0], corners_norm[0], atol=0.05))
+
+    def test_tap_order_maps_semantic_tl_to_warp_origin(self) -> None:
+        corners_norm = [
+            [0.32, 0.37],
+            [0.68, 0.374],
+            [0.969, 0.673],
+            [0.012, 0.656],
+        ]
+        w, h = 1536, 2048
+        pixel_corners = [[c[0] * w, c[1] * h] for c in corners_norm]
+        image = np.zeros((h, w, 3), dtype=np.uint8)
+        tl_x, tl_y = int(0.32 * w), int(0.37 * h)
+        cv2.circle(image, (tl_x, tl_y), 30, (0, 0, 255), -1)
+
+        warped, _ = warp_felt(image, pixel_corners)
+        roi = warped[0:150, 0:150, 2]
+        self.assertGreater(int(np.count_nonzero(roi > 200)), 50)
+
+
 class SyntheticDetectionTests(unittest.TestCase):
     def _make_blue_table_with_balls(self) -> np.ndarray:
         warped = np.zeros((1000, 2000, 3), dtype=np.uint8)
@@ -116,7 +148,7 @@ class SampleImageSmokeTests(unittest.TestCase):
         corners = json.loads(corners_path.read_text(encoding="utf-8"))
         result = detect_from_array(image, corners, source_name="table_photo.png")
         self.assertGreaterEqual(result["meta"]["ball_count"], 5)
-        self.assertEqual(result["meta"]["detector_version"], "0.1.6")
+        self.assertEqual(result["meta"]["detector_version"], "0.1.7")
 
     def test_hall_end_view_photo(self) -> None:
         root = Path(__file__).resolve().parent
