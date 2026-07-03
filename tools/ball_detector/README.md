@@ -102,16 +102,23 @@ python detect_balls.py -i samples/table_photo.png --pick-corners -o out/result.j
 python detect_balls.py -i samples/table_photo.png -c corners.json -o out/result.json
 ```
 
-## 検出フィルタ (v0.1.3)
+## 検出アルゴリズム (v0.1.5)
 
-API / CLI 出力は次の後処理を通します。
+v0.1.5 の主な改善:
+
+1. **緑台対応** — 青台だけでなく緑台のフェルトマスクを自動選択
+2. **候補スコアリング** — サイズ・彩度・円周リング・反射除外で誤検出を抑制
+3. **色分類** — 中心グレア回避のリングサンプリング＋ストライプ球対応
+4. **CLAHE + 多段 Hough** — 照明ムラのある店舗写真で拾いやすく
+
+### 後処理フィルタ
 
 1. **フェルト内** — 台布マスク上のみ（中心＋円周サンプル）
-2. **端除外** — 正規化座標で四辺から 8% 以内を除外
-3. **距離で重複除去** — 平均半径 × 2.3 未満の近傍は高スコアのみ残す
+2. **端除外** — 正規化座標で四辺から 6% 以内を除外
+3. **距離で重複除去** — 平均半径 × 2.2 未満の近傍は高スコアのみ残す
 4. **上限 12 個** — クッション付近の誤検出を優先的に落とす
 
-`meta.ball_count_raw` にフィルタ前件数、`meta.filter` に除外内訳があります。
+`meta.ball_count_raw` にフィルタ前件数、`meta.filter` に除外内訳、`meta.detector_version` に検出器バージョンがあります。
 
 
 **Flutter に貼り付けるときは CLI が出力した JSON をそのまま使ってください。**  
@@ -385,7 +392,7 @@ gcloud run services describe $SERVICE \
 export API_URL=$(gcloud run services describe $SERVICE --region=$REGION --format='value(status.url)')
 
 curl -s "$API_URL/health"
-# => {"status":"ok","version":"0.1.4"}
+# => {"status":"ok","version":"0.1.5"}
 ```
 
 **検出 API（サンプル画像）**
