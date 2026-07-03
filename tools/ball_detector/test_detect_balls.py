@@ -111,6 +111,20 @@ class SampleImageSmokeTests(unittest.TestCase):
         self.assertGreaterEqual(result["meta"]["ball_count"], 5)
         self.assertEqual(result["meta"]["detector_version"], "0.1.5")
 
+    def test_hall_end_view_photo(self) -> None:
+        root = Path(__file__).resolve().parent
+        image_path = root / "samples" / "S__194953223_0.jpg"
+        corners_path = root / "samples" / "hall_end_view_corners.json"
+        if not image_path.exists() or not corners_path.exists():
+            self.skipTest("hall sample assets missing")
+
+        image = cv2.imread(str(image_path))
+        corners = json.loads(corners_path.read_text(encoding="utf-8"))
+        result = detect_from_array(image, corners, source_name=image_path.name)
+        self.assertGreaterEqual(result["meta"]["ball_count"], 6)
+        colors = {b["color"] for b in result["balls"]}
+        self.assertTrue(colors - {"unknown"})
+
 
 if __name__ == "__main__":
     unittest.main()

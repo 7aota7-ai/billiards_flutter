@@ -1,0 +1,51 @@
+# 球検出 API (tools/ball_detector) を Cloud Run へデプロイ
+name: Deploy Ball Detector API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/ball_detector/**"
+      - ".github/workflows/deploy-cloud-run.yml"
+  workflow_dispatch:
+
+env:
+  SERVICE: billiards-ball-detector
+  REGION: asia-northeast1
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${{ env.SERVICE }}" \
+            --source tools/ball_detector \
+            --region "${{ env.REGION }}" \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory 512Mi \
+            --cpu 1 \
+            --timeout 60s \
+            --max-instances 2 \
+            --set-env-vars "CORS_ORIGINS=https://7aota7-ai.github.io,MAX_UPLOAD_BYTES=10485760,RATE_LIMIT_REQUESTS=30,RATE_LIMIT_WINDOW_SEC=60,LOG_DETECT_RESULTS=false"
+
+      - name: Verify /health
+        run: |
+          URL=$(gcloud run services describe "${{ env.SERVICE }}" \
+            --region "${{ env.REGION }}" \
+            --format='value(status.url)')
+          echo "API URL: ${URL}"
+          curl -sf "${URL}/health" | tee health.json
+          python3 -c "import json; h=json.load(open('health.json')); assert h.get('version')>='0.1.5', h"
