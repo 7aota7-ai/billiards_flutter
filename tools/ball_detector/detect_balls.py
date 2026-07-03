@@ -19,9 +19,11 @@ WARP_WIDTH = 2000
 WARP_HEIGHT = 1000
 
 # Post-filter defaults (felt interior, dedupe, cap).
-FILTER_EDGE_MARGIN = 0.08
+FILTER_EDGE_MARGIN = 0.06
 FILTER_MAX_BALLS = 12
-FILTER_MIN_SEP_FACTOR = 2.3
+FILTER_MIN_SEP_FACTOR = 2.2
+MIN_BALL_SCORE = 2.65
+EXPECTED_BALL_RADIUS_RATIO = 0.0225  # ~57 mm dia on 127 cm playing width
 
 CORNER_LABELS = ("top-left", "top-right", "bottom-right", "bottom-left")
 
@@ -33,6 +35,7 @@ class DetectedBall:
     y: float
     color: str
     radius_px: float
+    score: float = 0.0
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -72,36 +75,51 @@ def warp_felt(image: np.ndarray, corners: list[list[float]]) -> tuple[np.ndarray
     return warped, matrix
 
 
-def _classify_color(bgr: np.ndarray, x: int, y: int, r: int) -> str:
-    """Rough HSV color label for v1 user confirmation."""
-    h, w = bgr.shape[:2]
-    inner = max(2, int(r * 0.35))
-    x0, x1 = max(0, x - inner), min(w, x + inner)
-    y0, y1 = max(0, y - inner), min(h, y + inner)
-    patch = bgr[y0:y1, x0:x1]
-    if patch.size == 0:
-        return "unknown"
+def _sample_annulus_hsv(
+    hsv: np.ndarray,
+    x: int,
+    y: int,
+    r: int,
+    *,
+    sample_radius: float = 0.55,
+) -> np.ndarray:
+    """Sample HSV on a ball surface ring (avoids center glare)."""
+    h, w = hsv.shape[:2]
+    rr = max(2, int(r * sample_radius))
+    samples: list[np.ndarray] = []
+    for angle in range(0, 360, 30):
+        rad = math.radians(angle)
+        sx = int(x + math.cos(rad) * rr)
+        sy = int(y + math.sin(rad) * rr)
+        if 0 <= sx < w and 0 <= sy < h:
+            samples.append(hsv[sy, sx])
+    if not samples:
+        inner = max(2, int(r * 0.35))
+        x0, x1 = max(0, x - inner), min(w, x + inner)
+        y0, y1 = max(0, y - inner), min(h, y + inner)
+        patch = hsv[y0:y1, x0:x1].reshape(-1, 3)
+        return patch
+    return np.array(samples, dtype=np.uint8)
 
-    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
-    pixels = hsv.reshape(-1, 3)
-    # Ignore very dark shadow pixels under the ball.
-    bright = pixels[pixels[:, 2] > 35]
-    if len(bright) == 0:
-        return "unknown"
-    h_med = float(np.median(bright[:, 0]))
-    s_med = float(np.median(bright[:, 1]))
-    v_med = float(np.median(bright[:, 2]))
 
-    if v_med < 55:
+def _is_glare_patch(pixels: np.ndarray) -> bool:
+    """Specular highlight on felt — bright and low saturation."""
+    if pixels.size == 0:
+        return False
+    s_med = float(np.median(pixels[:, 1]))
+    v_med = float(np.median(pixels[:, 2]))
+    return v_med > 205 and s_med < 45
+
+
+def _hue_to_color(hue: float, sat: float, val: float) -> str:
+    if val < 55:
         return "black"
-    if s_med < 40 and v_med > 150:
+    if sat < 40 and val > 150:
         return "white"
-    if s_med < 50 and v_med > 115:
+    if sat < 50 and val > 115:
         return "white"
-
-    hue = h_med
     if hue < 12 or hue >= 168:
-        return "red" if v_med > 90 else "maroon"
+        return "red" if val > 90 else "maroon"
     if hue < 22:
         return "orange"
     if hue < 38:
@@ -117,6 +135,32 @@ def _classify_color(bgr: np.ndarray, x: int, y: int, r: int) -> str:
     return "unknown"
 
 
+def _classify_color(bgr: np.ndarray, x: int, y: int, r: int) -> str:
+    """HSV color label from annular samples (robust to center glare)."""
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    pixels = _sample_annulus_hsv(hsv, x, y, r)
+    if pixels.size == 0:
+        return "unknown"
+
+    usable = pixels[(pixels[:, 2] > 35) & ~((pixels[:, 2] > 220) & (pixels[:, 1] < 35))]
+    if len(usable) == 0:
+        return "unknown"
+
+    hues = usable[:, 0].astype(np.float32)
+    s_med = float(np.median(usable[:, 1]))
+    v_med = float(np.median(usable[:, 2]))
+    h_med = float(np.median(hues))
+
+    # Stripe balls: hue jumps around the ring (white + colored stripe).
+    if len(hues) >= 4 and float(np.std(hues)) > 22 and s_med > 35:
+        low_sat = usable[usable[:, 1] < 55]
+        high_sat = usable[usable[:, 1] >= 55]
+        if len(low_sat) >= 2 and len(high_sat) >= 2:
+            return _hue_to_color(float(np.median(high_sat[:, 0])), s_med, v_med)
+
+    return _hue_to_color(h_med, s_med, v_med)
+
+
 def _cloth_masks(hsv: np.ndarray) -> tuple[np.ndarray, np.ndarray, bool]:
     """Build felt/non-felt masks and detect blue vs green cloth."""
     blue_felt = cv2.inRange(hsv, np.array([85, 35, 25]), np.array([145, 255, 255]))
@@ -127,15 +171,89 @@ def _cloth_masks(hsv: np.ndarray) -> tuple[np.ndarray, np.ndarray, bool]:
     x0, x1 = w // 4, (3 * w) // 4
     blue_ratio = float(np.mean(blue_felt[y0:y1, x0:x1] > 0))
     green_ratio = float(np.mean(green_felt[y0:y1, x0:x1] > 0))
-    # Strong blue cloth: ball centers sit on non-felt pixels.
-    # Threshold 0.5 — real blue tables are often ~0.65–0.98 (0.9 was too strict).
     is_blue_cloth = blue_ratio > 0.5 and blue_ratio > green_ratio
+    is_green_cloth = green_ratio > 0.45 and green_ratio > blue_ratio
 
-    felt = blue_felt
+    if is_blue_cloth:
+        felt = blue_felt
+    elif is_green_cloth:
+        felt = green_felt
+    else:
+        felt = cv2.bitwise_or(blue_felt, green_felt)
+
+    felt = cv2.morphologyEx(felt, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
     non_felt = cv2.bitwise_not(felt)
     non_felt = cv2.morphologyEx(non_felt, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
     non_felt = cv2.morphologyEx(non_felt, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
     return felt, non_felt, is_blue_cloth
+
+
+def _expected_ball_radius(w: int) -> float:
+    return max(12.0, w * EXPECTED_BALL_RADIUS_RATIO)
+
+
+def _ring_non_felt_ratio(
+    non_felt: np.ndarray,
+    cx: int,
+    cy: int,
+    r: int,
+) -> float:
+    h, w = non_felt.shape[:2]
+    hits = 0
+    total = 0
+    for angle in range(0, 360, 30):
+        rad = math.radians(angle)
+        sx = int(cx + math.cos(rad) * r * 0.65)
+        sy = int(cy + math.sin(rad) * r * 0.65)
+        if 0 <= sx < w and 0 <= sy < h:
+            total += 1
+            if non_felt[sy, sx] != 0:
+                hits += 1
+    return hits / total if total else 0.0
+
+
+def _score_ball_candidate(
+    warped_bgr: np.ndarray,
+    felt: np.ndarray,
+    non_felt: np.ndarray,
+    cx: int,
+    cy: int,
+    r: int,
+) -> float:
+    h, w = warped_bgr.shape[:2]
+    if cx < 0 or cy < 0 or cx >= w or cy >= h:
+        return 0.0
+    if felt[cy, cx] != 0:
+        return 0.0
+
+    hsv = cv2.cvtColor(warped_bgr, cv2.COLOR_BGR2HSV)
+    annulus = _sample_annulus_hsv(hsv, cx, cy, r)
+    if _is_glare_patch(annulus):
+        return 0.0
+
+    expected_r = _expected_ball_radius(w)
+    size_score = max(0.0, 1.0 - abs(r - expected_r) / max(expected_r, 1.0))
+
+    usable = annulus[annulus[:, 2] > 35]
+    sat_med = float(np.median(usable[:, 1])) if len(usable) else 0.0
+    sat_score = min(1.0, sat_med / 130.0)
+
+    ring_ratio = _ring_non_felt_ratio(non_felt, cx, cy, r)
+    ring_score = min(1.0, ring_ratio / 0.55)
+
+    color = _classify_color(warped_bgr, cx, cy, r)
+    color_score = 0.15 if color == "unknown" else 0.45
+
+    edge = min(cx / w, 1.0 - cx / w, cy / h, 1.0 - cy / h)
+    edge_score = min(1.0, edge / 0.08)
+
+    return (
+        size_score * 1.8
+        + sat_score * 1.4
+        + ring_score * 2.2
+        + color_score
+        + edge_score * 0.4
+    )
 
 
 def detect_balls(
@@ -145,15 +263,18 @@ def detect_balls(
     max_radius: int | None = None,
     hough_param2: int = 26,
     edge_margin: float = 0.06,
+    min_score: float = MIN_BALL_SCORE,
 ) -> list[DetectedBall]:
     """Detect balls on a top-down warped felt image."""
     h, w = warped_bgr.shape[:2]
+    expected_r = _expected_ball_radius(w)
     if min_radius is None:
-        min_radius = max(10, int(w * 0.009))
+        min_radius = max(8, int(expected_r * 0.65))
     if max_radius is None:
-        max_radius = max(min_radius + 6, int(w * 0.028))
+        max_radius = max(min_radius + 6, int(expected_r * 1.45))
 
     gray = cv2.cvtColor(warped_bgr, cv2.COLOR_BGR2GRAY)
+    gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
     gray = cv2.GaussianBlur(gray, (7, 7), 1.5)
 
     hsv = cv2.cvtColor(warped_bgr, cv2.COLOR_BGR2HSV)
@@ -165,12 +286,20 @@ def detect_balls(
     masked_sat = cv2.bitwise_and(sat, sat, mask=non_felt)
 
     candidates: list[tuple[int, int, int]] = []
-    for source, p2 in ((masked, hough_param2), (masked_sat, max(18, hough_param2 - 2))):
+    param2_values = sorted(
+        {hough_param2, max(16, hough_param2 - 4), max(14, hough_param2 - 8)},
+        reverse=True,
+    )
+    for source, p2 in (
+        (masked, param2_values[0]),
+        (masked_sat, param2_values[1]),
+        (masked, param2_values[-1]),
+    ):
         circles = cv2.HoughCircles(
             source,
             cv2.HOUGH_GRADIENT,
             dp=1.2,
-            minDist=int(min_radius * 2.2),
+            minDist=int(min_radius * 2.0),
             param1=100,
             param2=p2,
             minRadius=min_radius,
@@ -191,7 +320,7 @@ def detect_balls(
         if perimeter <= 0:
             continue
         circularity = 4.0 * math.pi * area / (perimeter * perimeter)
-        if circularity < 0.72:
+        if circularity < 0.68:
             continue
         (cx, cy), radius = cv2.minEnclosingCircle(cnt)
         if min_radius <= radius <= max_radius:
@@ -199,37 +328,45 @@ def detect_balls(
 
     margin = max_radius + 6
     detected: list[DetectedBall] = []
+    seen: set[tuple[int, int, int]] = set()
     for cx, cy, r in candidates:
+        key = (cx // 4, cy // 4, r // 3)
+        if key in seen:
+            continue
+        seen.add(key)
+
         if cx < margin or cy < margin or cx > w - margin or cy > h - margin:
             continue
         if cy < 0 or cy >= h or cx < 0 or cx >= w:
             continue
-        if felt[cy, cx] != 0:
-            continue
 
-        # Ignore detections hugging cushion / pocket edges.
         nx, ny = cx / w, cy / h
         if nx < edge_margin or nx > 1.0 - edge_margin or ny < edge_margin or ny > 1.0 - edge_margin:
             continue
 
+        score = _score_ball_candidate(warped_bgr, felt, non_felt, cx, cy, r)
+        if score < min_score:
+            continue
+
         color = _classify_color(warped_bgr, cx, cy, r)
-        if color == "unknown":
-            color = "white"
         detected.append(
             DetectedBall(
                 id=None,
-                x=float(cx / w),
-                y=float(cy / h),
+                x=float(nx),
+                y=float(ny),
                 color=color,
                 radius_px=float(r),
+                score=score,
             )
         )
 
-    return _dedupe_balls(detected, min_dist=min_radius * 2.2)
+    return _dedupe_balls(detected, min_dist=min_radius * 2.0)
 
 
 def _ball_quality(ball: DetectedBall) -> float:
-    """Higher = more likely a real ball (size + distance from cushion)."""
+    """Higher = more likely a real ball (score + size + distance from cushion)."""
+    if ball.score > 0:
+        return ball.score
     edge = min(ball.x, 1.0 - ball.x, ball.y, 1.0 - ball.y)
     return ball.radius_px * (0.35 + edge * 4.0)
 
@@ -327,7 +464,7 @@ def _dedupe_balls(balls: list[DetectedBall], min_dist: float) -> list[DetectedBa
     if not balls:
         return balls
     kept: list[DetectedBall] = []
-    for ball in sorted(balls, key=lambda b: b.radius_px, reverse=True):
+    for ball in sorted(balls, key=_ball_quality, reverse=True):
         bx = ball.x * WARP_WIDTH
         by = ball.y * WARP_HEIGHT
         if all((bx - k.x * WARP_WIDTH) ** 2 + (by - k.y * WARP_HEIGHT) ** 2 >= min_dist**2 for k in kept):
@@ -378,10 +515,14 @@ def _corner_span_ok(pixel_corners: list[list[float]], width: int, height: int) -
 def detect_balls_bare(warped_bgr: np.ndarray) -> list[DetectedBall]:
     """Last-resort Hough on full grayscale (no felt mask)."""
     h, w = warped_bgr.shape[:2]
-    min_radius = max(8, int(w * 0.008))
-    max_radius = max(min_radius + 6, int(w * 0.032))
+    expected_r = _expected_ball_radius(w)
+    min_radius = max(8, int(expected_r * 0.6))
+    max_radius = max(min_radius + 6, int(expected_r * 1.5))
     gray = cv2.cvtColor(warped_bgr, cv2.COLOR_BGR2GRAY)
+    gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
     gray = cv2.GaussianBlur(gray, (5, 5), 1.2)
+    hsv = cv2.cvtColor(warped_bgr, cv2.COLOR_BGR2HSV)
+    felt, non_felt, _ = _cloth_masks(hsv)
 
     candidates: list[tuple[int, int, int]] = []
     for p2 in (32, 26, 20, 16):
@@ -400,22 +541,29 @@ def detect_balls_bare(warped_bgr: np.ndarray) -> list[DetectedBall]:
 
     margin = max_radius + 4
     detected: list[DetectedBall] = []
+    seen: set[tuple[int, int, int]] = set()
     for cx, cy, r in candidates:
+        key = (cx // 4, cy // 4, r // 3)
+        if key in seen:
+            continue
+        seen.add(key)
         if cx < margin or cy < margin or cx > w - margin or cy > h - margin:
             continue
         nx, ny = cx / w, cy / h
-        if nx < 0.06 or nx > 0.94 or ny < 0.06 or ny > 0.94:
+        if nx < 0.05 or nx > 0.95 or ny < 0.05 or ny > 0.95:
+            continue
+        score = _score_ball_candidate(warped_bgr, felt, non_felt, cx, cy, r)
+        if score < MIN_BALL_SCORE - 0.8:
             continue
         color = _classify_color(warped_bgr, cx, cy, r)
-        if color == "unknown":
-            color = "white"
         detected.append(
             DetectedBall(
                 id=None,
-                x=float(cx / w),
-                y=float(cy / h),
+                x=float(nx),
+                y=float(ny),
                 color=color,
                 radius_px=float(r),
+                score=score,
             )
         )
     return _dedupe_balls(detected, min_dist=min_radius * 1.8)
@@ -446,12 +594,21 @@ def detect_from_array(
     warped, _ = warp_felt(image, pixel_corners)
     balls = detect_balls(warped)
     detect_mode = "felt_mask"
-    if not balls:
-        balls = detect_balls(warped, hough_param2=18, edge_margin=0.02)
-        detect_mode = "relaxed"
-    if not balls:
-        balls = detect_balls_bare(warped)
-        detect_mode = "bare_hough"
+    if len(balls) < 3:
+        relaxed = detect_balls(
+            warped,
+            hough_param2=18,
+            edge_margin=0.04,
+            min_score=MIN_BALL_SCORE - 0.7,
+        )
+        if len(relaxed) > len(balls):
+            balls = relaxed
+            detect_mode = "relaxed"
+    if len(balls) < 2:
+        bare = detect_balls_bare(warped)
+        if len(bare) > len(balls):
+            balls = bare
+            detect_mode = "bare_hough"
 
     raw_count = len(balls)
     balls, filter_meta = filter_detected_balls(balls, warped)
@@ -496,6 +653,7 @@ def detect_from_array(
             "filter": filter_meta,
             "detect_mode": detect_mode,
             "is_blue_cloth": is_blue_cloth,
+            "detector_version": "0.1.5",
         },
     }
 
