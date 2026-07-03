@@ -125,7 +125,11 @@ def _log_detect_summary(
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "version": APP_VERSION}
+    return {
+        "status": "ok",
+        "version": APP_VERSION,
+        "git_sha": os.getenv("GIT_SHA", "unknown"),
+    }
 
 
 @app.post("/detect")
