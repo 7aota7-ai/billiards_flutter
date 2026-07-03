@@ -199,6 +199,20 @@ uvicorn server:app --reload --host 0.0.0.0 --port 8765
 
 ---
 
+## GitHub Actions で Cloud Run デプロイ
+
+`tools/ball_detector` を変更して `main` に push すると、Cloud Run へ自動デプロイされます（要 GitHub Secrets）。
+
+| Secret | 内容 |
+|--------|------|
+| `GCP_SA_KEY` | デプロイ用サービスアカウント JSON（`roles/run.admin`, `cloudbuild.builds.builder`, `artifactregistry.writer`, `iam.serviceAccountUser`） |
+
+手動実行: GitHub → Actions → **Deploy Ball Detector API** → Run workflow
+
+デプロイ後 `/health` の `version` が `0.1.5` 以上なら反映完了です。
+
+---
+
 ## Cloud Run 本番デプロイ（無料枠前提）
 
 球検出 API を HTTPS で公開し、GitHub Pages（`https://7aota7-ai.github.io/billiards_flutter/`）から直接呼べます。  
