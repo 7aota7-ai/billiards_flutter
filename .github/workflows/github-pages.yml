@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -38,13 +38,45 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - id: deployment
+      - name: Deploy to GitHub Pages (1/3)
+        id: deploy
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait before retry
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 45
+
+      - name: Deploy to GitHub Pages (2/3)
+        id: deploy2
+        if: steps.deploy.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait before final retry
+        if: steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: sleep 45
+
+      - name: Deploy to GitHub Pages (3/3)
+        id: deploy3
+        if: steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+
+      - name: Fail if all deploy attempts failed
+        if: >-
+          steps.deploy.outcome == 'failure' &&
+          (steps.deploy2.outcome == 'failure' || steps.deploy2.outcome == 'skipped') &&
+          (steps.deploy3.outcome == 'failure' || steps.deploy3.outcome == 'skipped')
+        run: |
+          echo "GitHub Pages deploy failed after retries."
+          echo "Re-run this workflow from Actions tab (workflow_dispatch)."
+          exit 1
