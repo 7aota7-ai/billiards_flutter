@@ -1507,10 +1507,8 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _refDetectedLayout = pending.layout;
       if (_refImageBytes != null) {
         _refPhotoOverlayActive = true;
-        _renderRefOverlayOnTable = true;
         _refPhotoZoomCtrl.value = Matrix4.identity();
       }
-      _scheduleRefWarp();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _applyDetectedLayout(pending.layout);
       });
@@ -1526,7 +1524,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     }
     _ensureCoordSpaceAligned();
     _syncFeltOrientationIfNeeded();
-    if (_hasRefPhoto) {
+    if (_renderRefOverlayOnTable && _hasRefPhoto) {
       final wantPortrait = _layoutUsesPortraitTable();
       if (_refWarpPortrait != null && _refWarpPortrait != wantPortrait) {
         _refWarpedBytes = null;
@@ -1537,9 +1535,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   }
 
   /// SP 縦=ポートレート台、SP 横・PC=ランドスケープ台（layout 基準で座標系を固定）。
-  /// 写真比較中は PC/SP とも横台に統一し、同一検出座標で並べて確認できるようにする。
   bool _layoutUsesPortraitTable() {
-    if (_showRefComparison) return false;
     if (!_isPhone) return false;
     return MediaQuery.of(context).orientation == Orientation.portrait;
   }
@@ -1752,7 +1748,6 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     }
 
     var placed = 0;
-    final portraitFelt = _layoutUsesPortraitTable();
     setState(() {
       for (final b in _balls) {
         b.onTable = false;
@@ -1763,10 +1758,11 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         final detected = layout.balls[i];
         final ball = _balls.where((b) => b.def.id == id).firstOrNull;
         if (ball == null) continue;
+        // API 座標は常に横台（ワープ長辺/短辺）基準。表示向きは後で変換する。
         final feltNorm = FeltHomography.detectionToFeltNorm(
           detected.x,
           detected.y,
-          portraitFelt: portraitFelt,
+          portraitFelt: false,
         );
         ball
           ..x = feltNorm.dx
@@ -1778,10 +1774,16 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _trajMode = false;
       _trajEditMode = false;
       _clearPhoneAxisGuides();
+      _feltCoordsPortrait = false;
       _status = _hasRefPhoto && _refPhotoOverlayActive
           ? '左に元写真・右に図面 — ボールを直して「完了」'
           : '写真から $placed 球を配置（色ヒントで仮割当・要確認）';
     });
+    if (_layoutUsesPortraitTable()) {
+      _remapFeltCoordsForLayout(fromPortrait: false, toPortrait: true);
+      _feltCoordsPortrait = true;
+      if (mounted) setState(() {});
+    }
   }
 
   double _ballRadiusPx() {
@@ -2367,7 +2369,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   }
 
   void _scheduleRefWarp() {
-    if (!_hasRefPhoto) return;
+    if (!_renderRefOverlayOnTable || !_hasRefPhoto) return;
     WidgetsBinding.instance.addPostFrameCallback((_) => _buildRefWarp());
   }
 
@@ -2383,7 +2385,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
   }
 
   Future<void> _buildRefWarp() async {
-    if (!_hasRefPhoto || _refWarping) return;
+    if (!_renderRefOverlayOnTable || !_hasRefPhoto || _refWarping) return;
     final portrait = _tableWarpPortrait();
     if (_refWarpCacheValid(portrait)) return;
     setState(() {
@@ -2414,7 +2416,7 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         }
       });
       final layout = _refDetectedLayout;
-      if (layout != null && result != null) {
+      if (layout != null && result != null && _renderRefOverlayOnTable) {
         _applyDetectedLayout(layout);
       }
     } catch (_) {
@@ -2423,9 +2425,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
     }
   }
 
-  /// SP 縦向き: 通常はポートレート台（1:2）。写真比較時のみ PC と同じ横台（2:1）。
+  /// SP 縦向き: 常にポートレート台（1:2）。
   Widget _buildPortraitPhoneLayout(BuildContext context) {
-    final tableAspect = _showRefComparison ? 2.0 : 0.5;
+    const tableAspect = 0.5;
     return Column(
       children: [
         const SizedBox(height: 4),
@@ -2938,30 +2940,22 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             top: _felt.top,
             width: _felt.width,
             height: _felt.height,
-            child: ClipRRect(
+              child: ClipRRect(
               borderRadius: BorderRadius.circular(
                 math.min(_felt.width, _felt.height) * 0.035,
               ),
-              child: FittedBox(
-                fit: BoxFit.cover,
-                clipBehavior: Clip.hardEdge,
-                child: SizedBox(
-                  width: _refWarpW.toDouble(),
-                  height: _refWarpH.toDouble(),
-                  child: Image.memory(
-                    _refWarpedBytes!,
-                    width: _refWarpW.toDouble(),
-                    height: _refWarpH.toDouble(),
-                    fit: BoxFit.fill,
-                    key: ValueKey(
-                      'ref-warp-v${FeltWarpService.cacheVersion}-'
-                      '${_refWarpW}x$_refWarpH-${_refWarpedBytes!.length}',
-                    ),
-                    filterQuality: FilterQuality.medium,
-                    gaplessPlayback: false,
-                    isAntiAlias: true,
-                  ),
+              child: Image.memory(
+                _refWarpedBytes!,
+                width: _felt.width,
+                height: _felt.height,
+                fit: BoxFit.fill,
+                key: ValueKey(
+                  'ref-warp-v${FeltWarpService.cacheVersion}-'
+                  '${_refWarpW}x$_refWarpH-${_refWarpedBytes!.length}',
                 ),
+                filterQuality: FilterQuality.medium,
+                gaplessPlayback: false,
+                isAntiAlias: true,
               ),
             ),
           ),

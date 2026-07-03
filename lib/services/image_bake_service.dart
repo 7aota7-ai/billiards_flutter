@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
@@ -14,6 +15,14 @@ class ImageBakeService {
   static const int maxLongEdgePx = 2048;
 
   static Future<({Uint8List bytes, Size size})> bake(Uint8List raw) async {
+    final baked = await compute(_bakeInIsolate, raw);
+    return (
+      bytes: baked.bytes,
+      size: Size(baked.width, baked.height),
+    );
+  }
+
+  static _BakedPayload _bakeInIsolate(Uint8List raw) {
     final decoded = img.decodeImage(raw);
     if (decoded == null) {
       throw StateError('画像を読み込めませんでした');
@@ -23,9 +32,10 @@ class ImageBakeService {
     working = _resizeIfNeeded(working);
     final bytes = _encodeJpegUnderLimit(working);
 
-    return (
+    return _BakedPayload(
       bytes: bytes,
-      size: Size(working.width.toDouble(), working.height.toDouble()),
+      width: working.width.toDouble(),
+      height: working.height.toDouble(),
     );
   }
 
@@ -68,4 +78,16 @@ class ImageBakeService {
     }
     return bytes;
   }
+}
+
+class _BakedPayload {
+  const _BakedPayload({
+    required this.bytes,
+    required this.width,
+    required this.height,
+  });
+
+  final Uint8List bytes;
+  final double width;
+  final double height;
 }
