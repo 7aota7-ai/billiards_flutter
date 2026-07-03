@@ -1727,6 +1727,9 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
 
   /// 写真検出結果を台面上に仮配置（id は色ヒントから推定、要ユーザー確認）。
   void _applyDetectedLayout(DetectedBallLayout layout) {
+    _ensureBallSetForDetection(layout.balls.length);
+
+    final portraitFelt = _layoutUsesPortraitTable();
     final usedIds = <int>{};
     final assignments = List<int?>.filled(layout.balls.length, null);
 
@@ -1763,11 +1766,10 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
         final detected = layout.balls[i];
         final ball = _balls.where((b) => b.def.id == id).firstOrNull;
         if (ball == null) continue;
-        // API 座標は常に横台（ワープ長辺/短辺）基準。表示向きは後で変換する。
         final feltNorm = FeltHomography.detectionToFeltNorm(
           detected.x,
           detected.y,
-          portraitFelt: false,
+          portraitFelt: portraitFelt,
         );
         ball
           ..x = feltNorm.dx
@@ -1779,16 +1781,21 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
       _trajMode = false;
       _trajEditMode = false;
       _clearPhoneAxisGuides();
-      _feltCoordsPortrait = false;
+      _feltCoordsPortrait = portraitFelt;
       _status = _hasRefPhoto && _refPhotoOverlayActive
-          ? '左に元写真・右に図面 — ボールを直して「完了」'
+          ? '左=写真の緑丸 / 右=緑丸=検出位置・番号=色推定（${layout.balls.length}球）'
           : '写真から $placed 球を配置（色ヒントで仮割当・要確認）';
     });
-    if (_layoutUsesPortraitTable()) {
-      _remapFeltCoordsForLayout(fromPortrait: false, toPortrait: true);
-      _feltCoordsPortrait = true;
-      if (mounted) setState(() {});
-    }
+  }
+
+  /// 検出数に合わせて 10球 / 15球モードへ自動切替（9球固定だと配置が消える）。
+  void _ensureBallSetForDetection(int detectedCount) {
+    if (detectedCount <= GameMode.nine.totalBalls) return;
+    final target = detectedCount > GameMode.ten.totalBalls
+        ? GameMode.fifteen
+        : GameMode.ten;
+    if (_mode == target) return;
+    _applyMode(target, resetPositions: false);
   }
 
   double _ballRadiusPx() {
@@ -2985,6 +2992,18 @@ class _BallLayoutEditorScreenState extends State<BallLayoutEditorScreen> {
             ),
           ),
         ),
+        if (_showRefComparison &&
+            _refDetectedLayout != null &&
+            _refDetectedLayout!.balls.isNotEmpty)
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _FeltDetectionOverlayPainter(
+                balls: _refDetectedLayout!.balls,
+                felt: _felt,
+                portraitFelt: _layoutUsesPortraitTable(),
+              ),
+            ),
+          ),
         Positioned.fill(
           child: CustomPaint(
             painter: TrajectoryPainter(
@@ -3353,6 +3372,50 @@ class _GuideLinePainter extends CustomPainter {
       oldDelegate.isVertical != isVertical ||
       oldDelegate.color != color ||
       oldDelegate.active != active;
+}
+
+/// 図面上に API 検出位置を緑丸で重ねる（番号付きボールと同じ座標変換）。
+class _FeltDetectionOverlayPainter extends CustomPainter {
+  _FeltDetectionOverlayPainter({
+    required this.balls,
+    required this.felt,
+    required this.portraitFelt,
+  });
+
+  final List<DetectedBall> balls;
+  final Rect felt;
+  final bool portraitFelt;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (balls.isEmpty || felt.width <= 0 || felt.height <= 0) return;
+
+    final fill = Paint()..color = const Color(0x6600E676);
+    final stroke = Paint()
+      ..color = const Color(0xFF00E676)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    for (final ball in balls) {
+      final norm = FeltHomography.detectionToFeltNorm(
+        ball.x,
+        ball.y,
+        portraitFelt: portraitFelt,
+      );
+      final pt = Offset(
+        felt.left + norm.dx * felt.width,
+        felt.top + norm.dy * felt.height,
+      );
+      canvas.drawCircle(pt, 11, fill);
+      canvas.drawCircle(pt, 11, stroke);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FeltDetectionOverlayPainter oldDelegate) =>
+      oldDelegate.balls != balls ||
+      oldDelegate.felt != felt ||
+      oldDelegate.portraitFelt != portraitFelt;
 }
 
 /// 参照写真上に API 検出位置を逆ホモグラフィで重ねる。
