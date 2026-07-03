@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'photo_local_save_platform.dart';
+import 'photo_local_save_types.dart';
 
 Future<PhotoSaveResult> saveImageToDevice(
   Uint8List bytes,

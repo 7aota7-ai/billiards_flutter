@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'captured_photo_backup_store.dart';
+import 'photo_local_save_types.dart';
 import 'photo_local_save_platform.dart'
     if (dart.library.io) 'photo_local_save_io.dart'
     if (dart.library.js_interop) 'photo_local_save_web.dart';
