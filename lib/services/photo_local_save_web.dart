@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:share_plus/share_plus.dart';
 import 'package:web/web.dart' as web;
 
-import 'photo_local_save_platform.dart';
+import 'photo_local_save_types.dart';
 
 Future<PhotoSaveResult> saveImageToDevice(
   Uint8List bytes,
