@@ -4,7 +4,7 @@ import 'package:billiards_flutter/services/felt_homography.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('landscape felt keeps API long/short axes', () {
+  test('landscape felt swaps warp axes for horizontal long side', () {
     const apiX = 0.713;
     const apiY = 0.311;
     final norm = FeltHomography.detectionToFeltNorm(
@@ -12,11 +12,11 @@ void main() {
       apiY,
       portraitFelt: false,
     );
-    expect(norm.dx, closeTo(apiX, 1e-9));
-    expect(norm.dy, closeTo(apiY, 1e-9));
+    expect(norm.dx, closeTo(apiY, 1e-9));
+    expect(norm.dy, closeTo(apiX, 1e-9));
   });
 
-  test('portrait felt mirrors short axis vs landscape', () {
+  test('portrait felt keeps warp axes aligned with end-view photo', () {
     const apiX = 0.713;
     const apiY = 0.311;
     final norm = FeltHomography.detectionToFeltNorm(
@@ -24,8 +24,8 @@ void main() {
       apiY,
       portraitFelt: true,
     );
-    expect(norm.dx, closeTo(1.0 - apiY, 1e-9));
-    expect(norm.dy, closeTo(apiX, 1e-9));
+    expect(norm.dx, closeTo(apiX, 1e-9));
+    expect(norm.dy, closeTo(apiY, 1e-9));
   });
 
   test('landscape and portrait round-trip through warp axes', () {
@@ -60,6 +60,20 @@ void main() {
     expect(fromPortrait.alongShort, closeTo(warp.alongShort, 1e-9));
     expect(fromLandscape.alongLong, closeTo(warp.alongLong, 1e-9));
     expect(fromLandscape.alongShort, closeTo(warp.alongShort, 1e-9));
+  });
+
+  test('photo-left warp x stays left on portrait felt (no horizontal flip)', () {
+    const left = FeltHomography.detectionToFeltNorm(
+      0.15,
+      0.5,
+      portraitFelt: true,
+    );
+    const right = FeltHomography.detectionToFeltNorm(
+      0.85,
+      0.5,
+      portraitFelt: true,
+    );
+    expect(left.dx, lessThan(right.dx));
   });
 
   test('warp origin maps to tap-order TL on steep portrait photo', () {

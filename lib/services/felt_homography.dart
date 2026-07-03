@@ -46,7 +46,8 @@ class FeltHomography {
   /// API 検出座標 → フェルト正規化座標。
   ///
   /// API ワープは常に 2000×1000（x=長辺, y=短辺）。表示は
-  /// 縦台: felt.x=短辺, felt.y=長辺 / 横台: felt.x=長辺, felt.y=短辺。
+  /// 縦台（縦撮影比較）: felt.x=ワープx, felt.y=ワープy（写真と同じ向き）
+  /// 横台: felt.x=ワープy, felt.y=ワープx（長辺を水平に）
   static Offset detectionToFeltNorm(
     double detectionX,
     double detectionY, {
@@ -75,10 +76,11 @@ class FeltHomography {
     required bool portraitFelt,
   }) {
     if (portraitFelt) {
-      // 横台の短辺(y)と縦台の短辺(x)で向きが逆のため 1−short。
-      return Offset(1.0 - warp.alongShort, warp.alongLong);
+      // 縦撮影の参照写真: ワープ x≒写真左右, y≒写真奥行 — 反転しない。
+      return Offset(warp.alongLong, warp.alongShort);
     }
-    return Offset(warp.alongLong, warp.alongShort);
+    // 横台: 長辺(y 方向のワープ)を水平 x へ。
+    return Offset(warp.alongShort, warp.alongLong);
   }
 
   /// フェルト正規化 ↔ ワープ軸（layout 切替時の座標変換に使用）。
@@ -87,9 +89,9 @@ class FeltHomography {
     required bool portraitFelt,
   }) {
     if (portraitFelt) {
-      return (alongLong: feltNorm.dy, alongShort: 1.0 - feltNorm.dx);
+      return (alongLong: feltNorm.dx, alongShort: feltNorm.dy);
     }
-    return (alongLong: feltNorm.dx, alongShort: feltNorm.dy);
+    return (alongLong: feltNorm.dy, alongShort: feltNorm.dx);
   }
 
   /// 横台フェルト正規化 → 縦台フェルト正規化（同一ワープ位置を保つ）。
