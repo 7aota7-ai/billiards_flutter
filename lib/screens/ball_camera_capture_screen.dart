@@ -9,6 +9,7 @@ import '../services/camera_preview_mapper.dart';
 import '../services/detection_api_settings.dart';
 import '../services/image_bake_service.dart';
 import '../services/pending_capture_store.dart';
+import '../services/photo_local_save_service.dart';
 import '../theme/apple_theme.dart';
 import '../utils/web_platform.dart';
 
@@ -246,12 +247,17 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
     required Size imageSize,
     required List<List<double>> corners,
   }) async {
+    final saveResult =
+        await PhotoLocalSaveService.saveCapture(bytes, tag: 'capture');
     PendingCaptureStore.set(
       bytes: bytes,
       imageSize: imageSize,
       cornersNormalized: corners,
     );
     if (!mounted) return;
+    if (saveResult.ok) {
+      _showSnack(saveResult.message);
+    }
     await Navigator.of(context).pushReplacementNamed('/photo-import');
   }
 

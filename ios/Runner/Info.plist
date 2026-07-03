@@ -68,5 +68,7 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>ビリヤード台の配置を撮影して球位置を読み取るためにカメラを使用します。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>撮影した配置写真を端末の写真ライブラリに保存します。</string>
 </dict>
 </plist>
