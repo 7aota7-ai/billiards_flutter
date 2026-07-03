@@ -1,17 +1,21 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../models/detected_ball_layout.dart';
 import '../models/table_guide_geometry.dart';
 import '../services/ball_detection_service.dart';
+import '../services/captured_photo_backup_store.dart';
 import '../services/detection_api_settings.dart';
 import '../services/image_bake_service.dart';
 import '../services/pending_capture_store.dart';
 import '../services/pending_photo_import_store.dart';
+import '../services/photo_local_save_service.dart';
 import '../services/picked_file_reader.dart';
+import '../utils/web_platform.dart';
 import '../theme/apple_theme.dart';
 
 /// Semi-automatic photo import: pick image, tap 4 felt corners, detect balls.
@@ -52,12 +56,17 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
   );
   bool _jsonExpanded = false;
   bool _showGuides = true;
+  bool _hasBackup = false;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
     _initApi();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPendingCapture());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadPendingCapture();
+      _refreshBackupAvailability();
+    });
   }
 
   @override
@@ -73,6 +82,76 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
       _service = BallDetectionService(baseUrl: url);
     });
     await _checkServer();
+  }
+
+  Future<void> _refreshBackupAvailability() async {
+    final has = await CapturedPhotoBackupStore.hasBackup();
+    if (!mounted) return;
+    setState(() => _hasBackup = has);
+  }
+
+  Future<void> _restoreBackup() async {
+    if (_busy || _picking) return;
+    setState(() {
+      _busy = true;
+      _status = '前回の撮影を復元中…';
+    });
+    try {
+      final backup = await CapturedPhotoBackupStore.load();
+      if (backup == null) {
+        setState(() {
+          _hasBackup = false;
+          _status = '保存済みの撮影がありません';
+        });
+        return;
+      }
+      final baked = await ImageBakeService.bake(backup.bytes);
+      if (!mounted) return;
+      setState(() {
+        _imageBytes = baked.bytes;
+        _imageSize = baked.size;
+        _filename = backup.filename;
+        _corners.clear();
+        _result = null;
+        _status =
+            '前回の撮影を復元（${baked.size.width.toInt()}×${baked.size.height.toInt()}）— 4隅を確認';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('復元に失敗しました: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _saveCurrentToDevice({required bool shareSheet}) async {
+    final bytes = _imageBytes;
+    if (bytes == null || _saving) return;
+    setState(() => _saving = true);
+    try {
+      final result = shareSheet
+          ? await PhotoLocalSaveService.shareToDevice(
+              bytes,
+              filename: _filename,
+            )
+          : await PhotoLocalSaveService.saveToDevice(
+              bytes,
+              filename: _filename,
+            );
+      if (!mounted) return;
+      _showSnack(result.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _persistNewImage(Uint8List bytes, {required String tag}) async {
+    final result = await PhotoLocalSaveService.saveCapture(bytes, tag: tag);
+    if (!mounted) return;
+    setState(() => _hasBackup = true);
+    if (result.ok) {
+      _showSnack(result.message);
+    }
   }
 
   Future<void> _checkServer() async {
@@ -160,6 +239,7 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
 
       final baked = await ImageBakeService.bake(rawBytes);
       if (!mounted) return;
+      await _persistNewImage(baked.bytes, tag: 'pick');
       setState(() {
         _imageBytes = baked.bytes;
         _imageSize = baked.size;
@@ -481,6 +561,28 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
                       icon: const Icon(Icons.fullscreen, size: 18),
                       label: const Text('全画面で4隅'),
                     ),
+                  if (_imageBytes != null)
+                    OutlinedButton.icon(
+                      onPressed: (_busy || _saving)
+                          ? null
+                          : () => _saveCurrentToDevice(shareSheet: false),
+                      icon: const Icon(Icons.save_alt_outlined, size: 18),
+                      label: Text(_saving ? '保存中…' : '端末に保存'),
+                    ),
+                  if (_imageBytes != null && (kIsWeb && isMobileWeb))
+                    OutlinedButton.icon(
+                      onPressed: (_busy || _saving)
+                          ? null
+                          : () => _saveCurrentToDevice(shareSheet: true),
+                      icon: const Icon(Icons.ios_share, size: 18),
+                      label: const Text('写真アプリへ'),
+                    ),
+                  if (_imageBytes == null && _hasBackup)
+                    FilledButton.tonalIcon(
+                      onPressed: (_busy || _picking) ? null : _restoreBackup,
+                      icon: const Icon(Icons.history, size: 18),
+                      label: const Text('前回の撮影を復元'),
+                    ),
                 ],
               ),
               if (_imageBytes != null) ...[
@@ -509,7 +611,8 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
                   child: Center(
                     child: Text(
                       '写真を選ぶと、ここに全体が表示されます。\n'
-                      '4隅はフェルト内側の角を順番にタップしてください。',
+                      '4隅はフェルト内側の角を順番にタップしてください。\n'
+                      '撮影・選択した写真は端末にも自動保存されます。',
                       textAlign: TextAlign.center,
                     ),
                   ),
