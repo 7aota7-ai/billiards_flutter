@@ -39,7 +39,7 @@ jobs:
             --cpu 1 \
             --timeout 60s \
             --max-instances 2 \
-            --set-env-vars "CORS_ORIGINS=https://7aota7-ai.github.io,MAX_UPLOAD_BYTES=10485760,RATE_LIMIT_REQUESTS=30,RATE_LIMIT_WINDOW_SEC=60,LOG_DETECT_RESULTS=false"
+            --set-env-vars "CORS_ORIGINS=https://7aota7-ai.github.io,MAX_UPLOAD_BYTES=10485760,RATE_LIMIT_REQUESTS=30,RATE_LIMIT_WINDOW_SEC=60,LOG_DETECT_RESULTS=false,GIT_SHA=${{ github.sha }}"
 
       - name: Verify /health
         run: |

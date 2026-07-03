@@ -199,6 +199,62 @@ uvicorn server:app --reload --host 0.0.0.0 --port 8765
 
 ---
 
+## デプロイ後も /health が 0.1.4 のまま
+
+**ほぼ確実に `git pull` 前の古いコードをデプロイしています。**
+
+`gcloud run deploy --source .` は **手元のファイル** をそのままビルドします。リモートの main が 0.1.5 でも、ローカルが 0.1.4 なら 0.1.4 がデプロイされます。
+
+### 確認（デプロイ前）
+
+```bash
+cd billiards_flutter
+git pull origin main
+grep APP_VERSION tools/ball_detector/server.py
+# => APP_VERSION = "0.1.5"  であること
+```
+
+### 再デプロイ（推奨: スクリプト）
+
+```bash
+bash tools/ball_detector/deploy.sh
+```
+
+成功すると `/health` が次のようになります:
+
+```json
+{"status":"ok","version":"0.1.5","git_sha":"f4cd5c5"}
+```
+
+`git_sha` が `unknown` の場合は古いリビジョンが動いている可能性があります。
+
+### 手動デプロイ
+
+```bash
+cd billiards_flutter && git pull origin main
+cd tools/ball_detector
+export GIT_SHA=$(git -C ../.. rev-parse --short HEAD)
+gcloud run deploy billiards-ball-detector \
+  --source . \
+  --region asia-northeast1 \
+  --allow-unauthenticated \
+  --set-env-vars "CORS_ORIGINS=https://7aota7-ai.github.io,GIT_SHA=${GIT_SHA}"
+curl -s "$(gcloud run services describe billiards-ball-detector --region asia-northeast1 --format='value(status.url)')/health"
+```
+
+### それでも 0.1.4 の場合
+
+```bash
+gcloud config get-value project
+gcloud run services describe billiards-ball-detector --region asia-northeast1 \
+  --format='yaml(status.url,status.latestReadyRevisionName,metadata.generation)'
+```
+
+- **project** が以前デプロイしたプロジェクトと一致しているか
+- **latestReadyRevisionName** がデプロイ直後に更新されているか
+
+---
+
 ## GitHub Actions で Cloud Run デプロイ
 
 `tools/ball_detector` を変更して `main` に push すると、Cloud Run へ自動デプロイされます（要 GitHub Secrets）。
