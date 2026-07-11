@@ -247,17 +247,15 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
     required Size imageSize,
     required List<List<double>> corners,
   }) async {
-    final saveResult =
-        await PhotoLocalSaveService.saveCapture(bytes, tag: 'capture');
+    // 先に画面へ渡す。端末保存は表示用バッファを触らないよう裏で実行。
     PendingCaptureStore.set(
       bytes: bytes,
       imageSize: imageSize,
       cornersNormalized: corners,
     );
+    // ignore: unawaited_futures — コピー保存のため表示用 bytes は安全
+    PhotoLocalSaveService.saveCapture(bytes, tag: 'capture');
     if (!mounted) return;
-    if (saveResult.ok) {
-      _showSnack(saveResult.message);
-    }
     await Navigator.of(context).pushReplacementNamed('/photo-import');
   }
 

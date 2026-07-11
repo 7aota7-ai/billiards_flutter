@@ -239,7 +239,6 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
 
       final baked = await ImageBakeService.bake(rawBytes);
       if (!mounted) return;
-      await _persistNewImage(baked.bytes, tag: 'pick');
       setState(() {
         _imageBytes = baked.bytes;
         _imageSize = baked.size;
@@ -251,6 +250,9 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
             '4隅を順番にタップ（${baked.size.width.toInt()}×${baked.size.height.toInt()}、'
             '${(baked.bytes.length / 1024).round()}KB）';
       });
+      // 表示を先に確定。保存はコピー経由で裏実行（表示バッファを壊さない）。
+      // ignore: unawaited_futures
+      _persistNewImage(baked.bytes, tag: 'pick');
     } catch (e) {
       if (!mounted) return;
       final msg = '写真を開けませんでした: $e';

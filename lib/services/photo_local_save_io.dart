@@ -10,7 +10,7 @@ Future<PhotoSaveResult> saveImageToDevice(
   String filename,
 ) async {
   try {
-    await Gal.putImageBytes(bytes, name: filename);
+    await Gal.putImageBytes(Uint8List.fromList(bytes), name: filename);
     return const PhotoSaveResult(
       ok: true,
       target: PhotoSaveTarget.gallery,

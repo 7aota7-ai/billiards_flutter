@@ -11,8 +11,11 @@ Future<PhotoSaveResult> saveImageToDevice(
   String filename,
 ) async {
   try {
+    // Copy first: Blob/JS interop can detach the original ArrayBuffer,
+    // which blanked Image.memory after camera handoff.
+    final copy = Uint8List.fromList(bytes);
     final blob = web.Blob(
-      <JSAny>[bytes.toJS].toJS,
+      <JSAny>[copy.toJS].toJS,
       web.BlobPropertyBag(type: 'image/jpeg'),
     );
     final url = web.URL.createObjectURL(blob);
@@ -37,7 +40,7 @@ Future<PhotoSaveResult> shareImageToDevice(
 ) async {
   try {
     final file = XFile.fromData(
-      bytes,
+      Uint8List.fromList(bytes),
       mimeType: 'image/jpeg',
       name: filename,
     );

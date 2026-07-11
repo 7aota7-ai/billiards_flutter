@@ -21,13 +21,16 @@ class PhotoLocalSaveService {
   static String _2(int v) => v.toString().padLeft(2, '0');
 
   /// 端末保存 + 直近1枚バックアップ（失敗してもバックアップは試行）。
+  ///
+  /// 呼び出し元の表示用バッファを壊さないよう、常にコピーを保存する。
   static Future<PhotoSaveResult> saveCapture(
     Uint8List jpegBytes, {
     String? tag,
   }) async {
     final filename = filenameFor(tag: tag);
-    await CapturedPhotoBackupStore.save(jpegBytes, filename);
-    return saveImageToDevice(jpegBytes, filename);
+    final copy = Uint8List.fromList(jpegBytes);
+    await CapturedPhotoBackupStore.save(copy, filename);
+    return saveImageToDevice(copy, filename);
   }
 
   /// 端末保存のみ（手動ボタン用）。
