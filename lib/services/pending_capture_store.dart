@@ -13,7 +13,7 @@ class PendingCaptureStore {
     List<List<double>>? cornersNormalized,
   }) {
     _pending = PendingCapture(
-      bytes: bytes,
+      bytes: Uint8List.fromList(bytes),
       imageSize: imageSize,
       cornersNormalized: cornersNormalized,
     );
