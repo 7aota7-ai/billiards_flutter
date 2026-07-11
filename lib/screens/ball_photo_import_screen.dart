@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -166,8 +167,9 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
   void _loadPendingCapture() {
     final cap = PendingCaptureStore.take();
     if (cap == null) return;
+    final bytes = Uint8List.fromList(cap.bytes);
     setState(() {
-      _imageBytes = cap.bytes;
+      _imageBytes = bytes;
       _imageSize = cap.imageSize;
       _filename = 'capture.jpg';
       _corners.clear();
@@ -185,6 +187,7 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
         _status = 'カメラ撮影を引き継ぎ — 4隅をタップしてください';
       }
     });
+    unawaited(_persistNewImage(bytes, tag: 'capture'));
   }
 
   int? _metaInt(dynamic value) {
@@ -250,9 +253,7 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
             '4隅を順番にタップ（${baked.size.width.toInt()}×${baked.size.height.toInt()}、'
             '${(baked.bytes.length / 1024).round()}KB）';
       });
-      // 表示を先に確定。保存はコピー経由で裏実行（表示バッファを壊さない）。
-      // ignore: unawaited_futures
-      _persistNewImage(baked.bytes, tag: 'pick');
+      unawaited(_persistNewImage(baked.bytes, tag: 'pick'));
     } catch (e) {
       if (!mounted) return;
       final msg = '写真を開けませんでした: $e';

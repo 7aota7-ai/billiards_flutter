@@ -16,10 +16,14 @@ class CapturedPhotoBackupStore {
 
   static Future<void> save(Uint8List bytes, String filename) async {
     if (bytes.isEmpty || bytes.length > maxBytes) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyBytes, base64Encode(bytes));
-    await prefs.setString(_keyName, filename);
-    await prefs.setInt(_keyTime, DateTime.now().millisecondsSinceEpoch);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyBytes, base64Encode(bytes));
+      await prefs.setString(_keyName, filename);
+      await prefs.setInt(_keyTime, DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {
+      // Quota exceeded (Web localStorage) など — 表示・検出は続行する。
+    }
   }
 
   static Future<CapturedPhotoBackup?> load() async {
