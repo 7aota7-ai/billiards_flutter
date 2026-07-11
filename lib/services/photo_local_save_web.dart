@@ -11,8 +11,9 @@ Future<PhotoSaveResult> saveImageToDevice(
   String filename,
 ) async {
   try {
+    final copy = Uint8List.fromList(bytes);
     final blob = web.Blob(
-      <JSAny>[bytes.toJS].toJS,
+      <JSAny>[copy.toJS].toJS,
       web.BlobPropertyBag(type: 'image/jpeg'),
     );
     final url = web.URL.createObjectURL(blob);
