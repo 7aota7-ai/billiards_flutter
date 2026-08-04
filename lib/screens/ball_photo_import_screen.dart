@@ -149,10 +149,9 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
   Future<void> _persistNewImage(Uint8List bytes, {required String tag}) async {
     final result = await PhotoLocalSaveService.saveCapture(bytes, tag: tag);
     if (!mounted) return;
-    setState(() => _hasBackup = true);
-    if (result.ok) {
-      _showSnack(result.message);
-    }
+    await _refreshBackupAvailability();
+    if (!mounted) return;
+    _showSnack(result.message);
   }
 
   Future<void> _checkServer() async {
@@ -758,6 +757,27 @@ class _BallPhotoImportScreenState extends State<BallPhotoImportScreen> {
                           width: layout.renderSize.width,
                           height: layout.renderSize.height,
                           fit: BoxFit.fill,
+                          errorBuilder: (context, error, stackTrace) {
+                            debugPrint(
+                              'BallPhotoImport: Image.memory decode failed '
+                              '(${_imageBytes!.length} bytes): $error',
+                            );
+                            return Container(
+                              width: layout.renderSize.width,
+                              height: layout.renderSize.height,
+                              color: Colors.red.shade100,
+                              alignment: Alignment.center,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(
+                                  '画像の表示に失敗しました\n'
+                                  '(${_imageBytes!.length} bytes)\n$error',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                         CustomPaint(
                           size: layout.renderSize,

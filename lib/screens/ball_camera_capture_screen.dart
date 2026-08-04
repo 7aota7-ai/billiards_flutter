@@ -343,6 +343,22 @@ class _BallCameraCaptureScreenState extends State<BallCameraCaptureScreen> {
                   corners: TableGuideGeometry.guideCornersNormalized(),
                 ),
               ),
+              if (_capturing)
+                Container(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  alignment: Alignment.center,
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: Colors.white),
+                      SizedBox(height: 12),
+                      Text(
+                        '写真を処理中…',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),

@@ -21,8 +21,11 @@ Future<PhotoSaveResult> saveImageToDevice(
     final url = web.URL.createObjectURL(blob);
     final anchor = web.document.createElement('a') as web.HTMLAnchorElement
       ..href = url
-      ..download = filename;
+      ..download = filename
+      ..style.display = 'none';
+    web.document.body!.appendChild(anchor);
     anchor.click();
+    anchor.remove();
     web.URL.revokeObjectURL(url);
     return const PhotoSaveResult(
       ok: true,
