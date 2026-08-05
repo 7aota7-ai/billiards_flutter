@@ -20,8 +20,11 @@ class PhotoLocalSaveService {
 
   static String _2(int v) => v.toString().padLeft(2, '0');
 
-  /// 端末保存 + 直近1枚バックアップ（失敗してもバックアップは試行）。
+  /// アプリ内バックアップのみ更新（端末への実保存はユーザー操作のボタンから行う）。
   ///
+  /// 撮影直後にユーザー操作なしで端末ダウンロード/共有を自動発火すると、
+  /// 表示中の Image.memory デコードとレースして失敗することがある
+  /// （iOS Safari で確認: `EncodingError: Loading was canceled`）。
   /// 呼び出し元の表示用バッファを壊さないよう、常にコピーを保存する。
   static Future<PhotoSaveResult> saveCapture(
     Uint8List jpegBytes, {
@@ -30,7 +33,11 @@ class PhotoLocalSaveService {
     final filename = filenameFor(tag: tag);
     final copy = Uint8List.fromList(jpegBytes);
     await CapturedPhotoBackupStore.save(copy, filename);
-    return saveImageToDevice(copy, filename);
+    return const PhotoSaveResult(
+      ok: true,
+      target: PhotoSaveTarget.none,
+      message: 'アプリ内に一時保存しました（端末保存は「端末に保存」ボタンから）',
+    );
   }
 
   /// 端末保存のみ（手動ボタン用）。
