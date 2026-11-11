@@ -14,6 +14,7 @@ import '../widgets/elo_info_link.dart';
 import '../widgets/matchup_stats_sheet.dart';
 import 'count_nine_screen.dart';
 import 'game_screen.dart';
+import 'rotation_screen.dart';
 
 /// `_LabeledRow` のラベル列幅。入力・リンクの左端を揃える。
 const double _kLabeledContentInset = 52;
@@ -546,6 +547,15 @@ class _SetupScreenState extends State<SetupScreen> {
     await Navigator.of(context).pushNamed<void>('/camera-capture');
   }
 
+  Future<void> _openRotation() async {
+    final p1 = _p1Name.text.trim().isEmpty ? 'あなた' : _p1Name.text.trim();
+    final p2 = _p2Name.text.trim().isEmpty ? '相手' : _p2Name.text.trim();
+    await Navigator.of(context).pushNamed<void>(
+      '/rotation',
+      arguments: RotationArgs(p1Name: p1, p2Name: p2),
+    );
+  }
+
   Future<void> _openCountNine() async {
     final p1 = _p1Name.text.trim().isEmpty ? 'あなた' : _p1Name.text.trim();
     final p2 = _p2Name.text.trim().isEmpty ? '相手' : _p2Name.text.trim();
@@ -613,6 +623,8 @@ class _SetupScreenState extends State<SetupScreen> {
                 await _openCameraCapture();
               } else if (value == 'count9') {
                 await _openCountNine();
+              } else if (value == 'rotation') {
+                await _openRotation();
               }
             },
             itemBuilder: (context) => const [
@@ -635,6 +647,10 @@ class _SetupScreenState extends State<SetupScreen> {
               PopupMenuItem<String>(
                 value: 'count9',
                 child: Text('カウントナイン'),
+              ),
+              PopupMenuItem<String>(
+                value: 'rotation',
+                child: Text('ローテーション'),
               ),
             ],
           ),

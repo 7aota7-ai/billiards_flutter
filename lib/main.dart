@@ -7,6 +7,7 @@ import 'screens/ball_photo_import_screen.dart';
 import 'screens/bowlard_record_screen.dart';
 import 'screens/count_nine_screen.dart';
 import 'screens/game_screen.dart';
+import 'screens/rotation_screen.dart';
 import 'screens/setup_screen.dart';
 import 'services/game_session_storage.dart';
 import 'theme/apple_theme.dart';
@@ -63,6 +64,14 @@ class BilliardsApp extends StatelessWidget {
             return MaterialPageRoute<void>(
               settings: const RouteSettings(name: '/bowlard'),
               builder: (_) => const BowlardRecordScreen(),
+            );
+          case '/rotation':
+            final args = settings.arguments;
+            return MaterialPageRoute<void>(
+              settings: const RouteSettings(name: '/rotation'),
+              builder: (_) => args is RotationArgs
+                  ? RotationScreen(p1Name: args.p1Name, p2Name: args.p2Name)
+                  : const RotationScreen(p1Name: 'あなた', p2Name: '相手'),
             );
           case '/count-nine':
             final args = settings.arguments;
@@ -135,6 +144,7 @@ String _normalizeInitialRoute() {
     '/camera-capture',
     '/bowlard',
     '/count-nine',
+    '/rotation',
   };
   return allowed.contains(path) ? path : '/setup';
 }
