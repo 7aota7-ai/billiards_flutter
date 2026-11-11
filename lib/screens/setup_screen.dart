@@ -546,10 +546,6 @@ class _SetupScreenState extends State<SetupScreen> {
     await Navigator.of(context).pushNamed<void>('/camera-capture');
   }
 
-  Future<void> _openFiveNineDraft() async {
-    await Navigator.of(context).pushNamed<void>('/five-nine');
-  }
-
   Future<void> _openCountNine() async {
     final p1 = _p1Name.text.trim().isEmpty ? 'あなた' : _p1Name.text.trim();
     final p2 = _p2Name.text.trim().isEmpty ? '相手' : _p2Name.text.trim();
@@ -615,8 +611,6 @@ class _SetupScreenState extends State<SetupScreen> {
                 await _openPhotoImport();
               } else if (value == 'camera_capture') {
                 await _openCameraCapture();
-              } else if (value == 'five9') {
-                await _openFiveNineDraft();
               } else if (value == 'count9') {
                 await _openCountNine();
               }
@@ -641,10 +635,6 @@ class _SetupScreenState extends State<SetupScreen> {
               PopupMenuItem<String>(
                 value: 'count9',
                 child: Text('カウントナイン'),
-              ),
-              PopupMenuItem<String>(
-                value: 'five9',
-                child: Text('5-9（5-10）'),
               ),
             ],
           ),
