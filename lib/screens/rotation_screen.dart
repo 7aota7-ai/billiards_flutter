@@ -298,275 +298,320 @@ class _RotationScreenState extends State<RotationScreen> {
         ),
       ),
       body: AppleContentWidth(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-          children: [
-            if (winner != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: AppleCard(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-                  child: Text(
-                    '${_names[winner]} の勝利（${_game.scores[0]} - ${_game.scores[1]}）',
-                    textAlign: TextAlign.center,
-                    style: tt.titleMedium?.copyWith(
-                      color: AppleColors.appleBlue,
-                      fontWeight: FontWeight.w700,
+        child: LayoutBuilder(builder: (context, box) {
+          // iPad（横向き）など横幅が広い場合は、ショットクロックを2人の間に置いて
+          // 縦方向を詰め、1画面に収める。
+          final wide = box.maxWidth >= 900;
+          return ListView(
+            padding: EdgeInsets.fromLTRB(16, wide ? 10 : 16, 16, 32),
+            children: [
+              if (winner != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: AppleCard(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 14),
+                    child: Text(
+                      '${_names[winner]} の勝利（${_game.scores[0]} - ${_game.scores[1]}）',
+                      textAlign: TextAlign.center,
+                      style: tt.titleMedium?.copyWith(
+                        color: AppleColors.appleBlue,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            // 左右のパネルは各行の高さを固定しているので常に同じ高さになる
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var p = 0; p < 2; p++) ...[
-                  if (p == 1) const SizedBox(width: 10),
-                  Expanded(
-                    child: _PlayerPanel(
-                      name: _names[p],
-                      score: _game.scores[p],
-                      target: _game.targets[p],
-                      rackScore: _game.currentRackScores[p],
-                      fouls: _game.fouls[p],
-                      isShooter: winner == null && _game.shooter == p,
-                      isBreaker: _game.breaker == p,
-                      onTapName: _game.isStarted
-                          ? null
-                          : () => setState(() => _game.setBreaker(p)),
-                      onTapTarget: () => _editTarget(p),
-                      extensionsLeft: _game.extensionsLeft[p],
-                      extensionLimit: _game.extensionLimits[p],
-                      onTapExtensions: () => _editExtensions(p),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 12),
-            AppleCard(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              // 左右のパネルは各行の高さを固定しているので常に同じ高さになる
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        'ラック ${_game.rackNumber}',
-                        style: tt.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const Spacer(),
-                      Text(
-                        lowest == null
-                            ? '残り ${_game.remainingPoints}点'
-                            : '的球 $lowest番 ・ 残り ${_game.remainingPoints}点',
-                        style: tt.bodySmall?.copyWith(
-                          color: AppleColors.glyphGraySecondary,
-                          fontWeight: FontWeight.w600,
+                  for (var p = 0; p < 2; p++) ...[
+                    if (p == 1) const SizedBox(width: 10),
+                    if (p == 1 && wide) ...[
+                      SizedBox(
+                        width: 240,
+                        child: _ShotClockCard(
+                          vertical: true,
+                          clock: _clock,
+                          shooterName: _names[_game.shooter],
+                          extensionsLeft: _game.extensionsLeft[_game.shooter],
+                          enabled: winner == null,
+                          onToggle: _toggleClock,
+                          onExtension: _useExtension,
+                          onSettings: _editShotSec,
                         ),
                       ),
+                      const SizedBox(width: 10),
                     ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    winner == null
-                        ? '${_names[_game.shooter]} の手番：入れた球をタップ'
-                        : '試合終了',
-                    style: tt.bodySmall
-                        ?.copyWith(color: AppleColors.glyphGraySecondary),
-                  ),
-                  const SizedBox(height: 12),
-                  LayoutBuilder(
-                    builder: (context, c) {
-                      const cols = 5;
-                      const gap = 10.0;
-                      final size = ((c.maxWidth - gap * (cols - 1)) / cols)
-                          .clamp(36.0, 64.0);
-                      return Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: gap,
-                        runSpacing: gap,
-                        children: [
-                          for (var n = 1; n <= RotationGame.ballCount; n++)
-                            _RotationBall(
-                              number: n,
-                              size: size,
-                              ownerLabel: _game.pocketed.containsKey(n)
-                                  ? _initial(_names[_game.pocketed[n]!])
-                                  : null,
-                              isLowest: n == lowest,
-                              onTap: winner != null ||
-                                      _game.pocketed.containsKey(n)
-                                  ? null
-                                  : () => _act(() => _game.pocket(n)),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-                  if (_game.canBreakFail) ...[
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: () => _act(_game.breakFailed, stopClock: true),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(40),
-                        foregroundColor: AppleColors.systemOrange,
-                        side: const BorderSide(color: AppleColors.systemOrange),
-                      ),
-                      icon: const Icon(Icons.swap_horiz, size: 18),
-                      label: Text(
-                        'キッチンに出せず → ${_names[1 - _game.breaker]} がブレイク',
+                    Expanded(
+                      child: _PlayerPanel(
+                        name: _names[p],
+                        score: _game.scores[p],
+                        target: _game.targets[p],
+                        rackScore: _game.currentRackScores[p],
+                        fouls: _game.fouls[p],
+                        isShooter: winner == null && _game.shooter == p,
+                        isBreaker: _game.breaker == p,
+                        onTapName: _game.isStarted
+                            ? null
+                            : () => setState(() => _game.setBreaker(p)),
+                        onTapTarget: () => _editTarget(p),
+                        extensionsLeft: _game.extensionsLeft[p],
+                        extensionLimit: _game.extensionLimits[p],
+                        onTapExtensions: () => _editExtensions(p),
                       ),
                     ),
                   ],
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton(
-                          onPressed:
-                              winner != null ? null : () => _act(_game.miss),
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(48),
-                            foregroundColor: Colors.white,
-                          ),
-                          child: const Text('ミス・交代'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed:
-                              winner != null ? null : () => _act(_game.foul),
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(48),
-                            backgroundColor: AppleColors.systemOrange,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: const Text('ファウル'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _game.canUndo ? _undo : null,
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(48),
-                          ),
-                          icon: const Icon(Icons.undo, size: 18),
-                          label: const Text('取消'),
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
-            ),
-            const SizedBox(height: 12),
-            _ShotClockCard(
-              clock: _clock,
-              shooterName: _names[_game.shooter],
-              extensionsLeft: _game.extensionsLeft[_game.shooter],
-              enabled: winner == null,
-              onToggle: _toggleClock,
-              onExtension: _useExtension,
-              onSettings: _editShotSec,
-            ),
-            if (_game.rackHistory.isNotEmpty) ...[
               const SizedBox(height: 12),
               AppleCard(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      'ラック履歴',
-                      style:
-                          tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 6),
-                    for (var i = 0; i < _game.rackHistory.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 72,
-                              child: Text('ラック ${i + 1}', style: tt.bodySmall),
-                            ),
-                            Expanded(
-                              child: Text(
-                                '${_game.rackHistory[i][0]} - ${_game.rackHistory[i][1]}',
-                                textAlign: TextAlign.center,
-                                style: tt.bodyMedium
-                                    ?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ],
+                    Row(
+                      children: [
+                        Text(
+                          'ラック ${_game.rackNumber}',
+                          style: tt.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
+                        const Spacer(),
+                        Text(
+                          lowest == null
+                              ? '残り ${_game.remainingPoints}点'
+                              : '的球 $lowest番 ・ 残り ${_game.remainingPoints}点',
+                          style: tt.bodySmall?.copyWith(
+                            color: AppleColors.glyphGraySecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      winner == null
+                          ? '${_names[_game.shooter]} の手番：入れた球をタップ'
+                          : '試合終了',
+                      style: tt.bodySmall
+                          ?.copyWith(color: AppleColors.glyphGraySecondary),
+                    ),
+                    const SizedBox(height: 12),
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        // 横幅に応じて 15列（1列に並べる）→ 8列 → 5列 を選ぶ。
+                        // 球が途中で1つだけ折り返さないよう、列数から直径を決める。
+                        const gap = 10.0;
+                        const minSize = 44.0;
+                        double sizeFor(int cols) =>
+                            (c.maxWidth - gap * (cols - 1)) / cols;
+                        final cols = sizeFor(15) >= minSize
+                            ? 15
+                            : sizeFor(8) >= minSize
+                                ? 8
+                                : 5;
+                        final size = (sizeFor(cols) - 0.5)
+                            .clamp(32.0, 64.0)
+                            .floorToDouble();
+                        return Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: gap,
+                          runSpacing: gap,
+                          children: [
+                            for (var n = 1; n <= RotationGame.ballCount; n++)
+                              _RotationBall(
+                                number: n,
+                                size: size,
+                                ownerLabel: _game.pocketed.containsKey(n)
+                                    ? _initial(_names[_game.pocketed[n]!])
+                                    : null,
+                                isLowest: n == lowest,
+                                onTap: winner != null ||
+                                        _game.pocketed.containsKey(n)
+                                    ? null
+                                    : () => _act(() => _game.pocket(n)),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    // 操作ボタンは4つを1列に。押しやすいよう高さを大きめに取る。
+                    // ブレイク交代（キッチンに出せなかった）はラック開始直後のみ有効。
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton(
+                            onPressed:
+                                winner != null ? null : () => _act(_game.miss),
+                            style: _actionStyle(
+                              filled: AppleColors.appleBlue,
+                            ),
+                            child: const _ActionLabel('ミス・交代'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed:
+                                winner != null ? null : () => _act(_game.foul),
+                            style: _actionStyle(
+                              filled: AppleColors.systemOrange,
+                            ),
+                            child: const _ActionLabel('ファウル'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _game.canUndo ? _undo : null,
+                            style: _actionStyle(),
+                            child: const _ActionLabel('取消'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _game.canBreakFail
+                                ? () => _act(_game.breakFailed, stopClock: true)
+                                : null,
+                            style: _actionStyle(),
+                            child: const _ActionLabel('ブレイク交代'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (!wide) const SizedBox(height: 12),
+              if (!wide)
+                _ShotClockCard(
+                  clock: _clock,
+                  shooterName: _names[_game.shooter],
+                  extensionsLeft: _game.extensionsLeft[_game.shooter],
+                  enabled: winner == null,
+                  onToggle: _toggleClock,
+                  onExtension: _useExtension,
+                  onSettings: _editShotSec,
+                ),
+              if (_game.rackHistory.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                AppleCard(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'ラック履歴',
+                        style: tt.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
+                      const SizedBox(height: 6),
+                      for (var i = 0; i < _game.rackHistory.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 72,
+                                child:
+                                    Text('ラック ${i + 1}', style: tt.bodySmall),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '${_game.rackHistory[i][0]} - ${_game.rackHistory[i][1]}',
+                                  textAlign: TextAlign.center,
+                                  style: tt.bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Text(
+                  '※ 試合開始前は名前をタップで先攻ブレイクを切り替え。\n'
+                  '※ ブレイクで球をキッチンに出せなかったときは、「ブレイク交代」で交代（ラック開始直後のみ押せます）。\n'
+                  '※ 目標点をタップで変更（ハンデ戦にも対応）。\n'
+                  '※ ファウル中に入った球はタップせず台に戻してください。',
+                  style: tt.bodySmall
+                      ?.copyWith(color: AppleColors.glyphGraySecondary),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _confirmReset,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                  child: const Text('リセット'),
+                ),
+              ),
+              AppleCard(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ローテーションルール',
+                      style: tt.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppleColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '● 1〜15番の15球を使用。入れた球の番号がそのまま得点（1ラック合計120点）。\n'
+                      '● 手球は常に台上の最小番号の球に最初に当てる。正しく当てれば、どの球が入っても得点。\n'
+                      '● 球を入れ続ける限り撞き続けられ、入らなければ交代。\n'
+                      '● ファウル時に入った球は得点にならず台に戻す。相手はフリーボール（手球を自由に置ける）。\n'
+                      '● ショットクロックは1ショット45秒（設定で変更可）。残り15秒でアラート、5秒前からカウントダウン。\n'
+                      '● エクステンションは試合を通して選手ごとに設定した回数（B級2回・A級3回）。残っていれば時間切れ時に自動で延長し、使い切っていれば時間切れはファウル。\n'
+                      '● 15球すべて入ったら次のラック。ブレイクは勝者ブレイク（そのラックで最後の球を入れた人。15番が途中でフロックで入っていたら、最後に入れた球の人）。\n'
+                      '● ブレイクで球をキッチンに出せなかった場合のみ、ブレイク権が相手に移る。\n'
+                      '● 先に目標点（デフォルト120点）に到達した方の勝ち。',
+                      style: tt.bodySmall?.copyWith(
+                        color: AppleColors.glyphGraySecondary,
+                        height: 1.5,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ],
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Text(
-                '※ 試合開始前は名前をタップで先攻ブレイクを切り替え。\n'
-                '※ ブレイクで球をキッチンに出せなかったときは、ラック開始直後に出るボタンで交代。\n'
-                '※ 目標点をタップで変更（ハンデ戦にも対応）。\n'
-                '※ ファウル中に入った球はタップせず台に戻してください。',
-                style: tt.bodySmall
-                    ?.copyWith(color: AppleColors.glyphGraySecondary),
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: _confirmReset,
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error,
-                ),
-                child: const Text('リセット'),
-              ),
-            ),
-            AppleCard(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ローテーションルール',
-                    style: tt.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppleColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '● 1〜15番の15球を使用。入れた球の番号がそのまま得点（1ラック合計120点）。\n'
-                    '● 手球は常に台上の最小番号の球に最初に当てる。正しく当てれば、どの球が入っても得点。\n'
-                    '● 球を入れ続ける限り撞き続けられ、入らなければ交代。\n'
-                    '● ファウル時に入った球は得点にならず台に戻す。相手はフリーボール（手球を自由に置ける）。\n'
-                    '● ショットクロックは1ショット45秒（設定で変更可）。残り15秒でアラート、5秒前からカウントダウン。\n'
-                    '● エクステンションは試合を通して選手ごとに設定した回数（B級2回・A級3回）。残っていれば時間切れ時に自動で延長し、使い切っていれば時間切れはファウル。\n'
-                    '● 15球すべて入ったら次のラック。ブレイクは勝者ブレイク（そのラックで最後の球を入れた人。15番が途中でフロックで入っていたら、最後に入れた球の人）。\n'
-                    '● ブレイクで球をキッチンに出せなかった場合のみ、ブレイク権が相手に移る。\n'
-                    '● 先に目標点（デフォルト120点）に到達した方の勝ち。',
-                    style: tt.bodySmall?.copyWith(
-                      color: AppleColors.glyphGraySecondary,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          );
+        }),
       ),
+    );
+  }
+
+  /// 操作ボタン共通スタイル（角丸の楕円形・高さ56で押しやすく）。
+  /// [filled] を渡すと塗りつぶしボタンの背景色になる。
+  static ButtonStyle _actionStyle({Color? filled}) {
+    return ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size.fromHeight(56)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 6, vertical: 14),
+      ),
+      shape: const WidgetStatePropertyAll(StadiumBorder()),
+      backgroundColor: filled == null
+          ? null
+          : WidgetStateProperty.resolveWith(
+              (s) => s.contains(WidgetState.disabled)
+                  ? filled.withValues(alpha: 0.35)
+                  : filled,
+            ),
+      foregroundColor:
+          filled == null ? null : const WidgetStatePropertyAll(Colors.white),
     );
   }
 
@@ -859,8 +904,11 @@ class _ShotClockCard extends StatelessWidget {
     required this.onToggle,
     required this.onExtension,
     required this.onSettings,
+    this.vertical = false,
   });
 
+  /// true: リングの下にボタンを並べる縦型（パネルの間に置く用）
+  final bool vertical;
   final ShotClock clock;
   final String shooterName;
   final int extensionsLeft;
@@ -883,79 +931,94 @@ class _ShotClockCard extends StatelessWidget {
     }
     final progress =
         clock.shotSec == 0 ? 0.0 : (remain / clock.shotSec).clamp(0.0, 1.0);
-    const ringSize = 132.0;
+    final statusText = Text(
+      clock.running ? '$shooterName の持ち時間' : 'ショットクロック 停止中',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: tt.bodySmall?.copyWith(
+        color: AppleColors.glyphGraySecondary,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+    final settingsButton = IconButton(
+      tooltip: '秒数の設定',
+      visualDensity: VisualDensity.compact,
+      onPressed: onSettings,
+      icon: const Icon(Icons.settings, size: 20),
+      color: AppleColors.glyphGraySecondary,
+    );
+    final toggleButton = OutlinedButton.icon(
+      onPressed: enabled ? onToggle : null,
+      style: OutlinedButton.styleFrom(
+        minimumSize: Size.fromHeight(vertical ? 40 : 44),
+      ),
+      icon: Icon(clock.running ? Icons.pause : Icons.play_arrow, size: 20),
+      label: Text(
+        clock.running ? '一時停止' : '開始',
+        style: const TextStyle(fontSize: 16),
+      ),
+    );
+    final extensionButton = OutlinedButton(
+      onPressed: enabled && extensionsLeft > 0 ? onExtension : null,
+      style: OutlinedButton.styleFrom(
+        minimumSize: Size.fromHeight(vertical ? 40 : 44),
+        foregroundColor: AppleColors.systemGreen,
+      ),
+      child: Text(
+        '延長（残り$extensionsLeft）',
+        style: const TextStyle(fontSize: 16),
+      ),
+    );
+    final cardColor = remain <= ShotClock.countdownFrom && clock.running
+        ? AppleColors.systemRed.withValues(alpha: 0.08)
+        : null;
 
-    return AppleCard(
-      padding: const EdgeInsets.fromLTRB(14, 12, 8, 14),
-      backgroundColor: remain <= ShotClock.countdownFrom && clock.running
-          ? AppleColors.systemRed.withValues(alpha: 0.08)
-          : null,
-      child: Row(
+    if (vertical) {
+      // 2人のパネルの間に置く縦型（iPad 横向きなど）。
+      // 見出し行の高さを選手名の行と揃えて、カードの上端をそろえる。
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 円形のショットクロック（残り秒を大きく）
           SizedBox(
-            width: ringSize,
-            height: ringSize,
-            child: Stack(
-              fit: StackFit.expand,
+            height: 30,
+            child: Row(
               children: [
-                Container(
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFF2B2B2E),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(7),
-                  child: CircularProgressIndicator(
-                    value: progress,
-                    strokeWidth: 12,
-                    color: color,
-                    backgroundColor: Colors.white.withValues(alpha: 0.12),
-                  ),
-                ),
-                Center(
-                  child: Text(
-                    '$remain',
-                    style: const TextStyle(
-                      fontSize: 58,
-                      height: 1,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ),
+                Expanded(child: Center(child: statusText)),
+                settingsButton,
               ],
             ),
           ),
+          const SizedBox(height: 4),
+          AppleCard(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            backgroundColor: cardColor,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(child: _ring(132, progress, color, remain)),
+                const SizedBox(height: 10),
+                toggleButton,
+                const SizedBox(height: 6),
+                extensionButton,
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return AppleCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 14),
+      backgroundColor: cardColor,
+      child: Row(
+        children: [
+          _ring(132, progress, color, remain),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        clock.running ? '$shooterName の持ち時間' : 'ショットクロック 停止中',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: tt.bodySmall?.copyWith(
-                          color: AppleColors.glyphGraySecondary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: '秒数の設定',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onSettings,
-                      icon: const Icon(Icons.settings, size: 20),
-                      color: AppleColors.glyphGraySecondary,
-                    ),
-                  ],
-                ),
+                Row(children: [Expanded(child: statusText), settingsButton]),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
@@ -966,37 +1029,73 @@ class _ShotClockCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: enabled ? onToggle : null,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(44),
-                  ),
-                  icon: Icon(
-                    clock.running ? Icons.pause : Icons.play_arrow,
-                    size: 20,
-                  ),
-                  label: Text(
-                    clock.running ? '一時停止' : '開始',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ),
+                toggleButton,
                 const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: enabled && extensionsLeft > 0 ? onExtension : null,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(44),
-                    foregroundColor: AppleColors.systemGreen,
-                  ),
-                  child: Text(
-                    '延長（残り$extensionsLeft）',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ),
+                extensionButton,
               ],
             ),
           ),
           const SizedBox(width: 6),
         ],
+      ),
+    );
+  }
+
+  /// 円形のショットクロック（残り秒を大きく）
+  static Widget _ring(double size, double progress, Color color, int remain) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFF2B2B2E),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(7),
+            child: CircularProgressIndicator(
+              value: progress,
+              strokeWidth: 12,
+              color: color,
+              backgroundColor: Colors.white.withValues(alpha: 0.12),
+            ),
+          ),
+          Center(
+            child: Text(
+              '$remain',
+              style: TextStyle(
+                fontSize: size * 0.44,
+                height: 1,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 操作ボタンの文字。ボタン幅が狭い画面でも1行に収まるよう縮小する。
+class _ActionLabel extends StatelessWidget {
+  const _ActionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(
+        text,
+        maxLines: 1,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
       ),
     );
   }
