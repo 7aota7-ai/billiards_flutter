@@ -345,16 +345,6 @@ class _RotationScreenState extends State<RotationScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            _ShotClockCard(
-              clock: _clock,
-              shooterName: _names[_game.shooter],
-              extensionsLeft: _game.extensionsLeft[_game.shooter],
-              enabled: winner == null,
-              onToggle: _toggleClock,
-              onExtension: _useExtension,
-              onSettings: _editShotSec,
-            ),
-            const SizedBox(height: 12),
             AppleCard(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
               child: Column(
@@ -474,6 +464,16 @@ class _RotationScreenState extends State<RotationScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            _ShotClockCard(
+              clock: _clock,
+              shooterName: _names[_game.shooter],
+              extensionsLeft: _game.extensionsLeft[_game.shooter],
+              enabled: winner == null,
+              onToggle: _toggleClock,
+              onExtension: _useExtension,
+              onSettings: _editShotSec,
+            ),
             if (_game.rackHistory.isNotEmpty) ...[
               const SizedBox(height: 12),
               AppleCard(
@@ -592,9 +592,6 @@ class _PlayerPanel extends StatelessWidget {
     required this.onTapExtensions,
   });
 
-  final int extensionsLeft;
-  final int extensionLimit;
-  final VoidCallback onTapExtensions;
   final String name;
   final int score;
   final int target;
@@ -604,156 +601,251 @@ class _PlayerPanel extends StatelessWidget {
   final bool isBreaker;
   final VoidCallback? onTapName;
   final VoidCallback onTapTarget;
+  final int extensionsLeft;
+  final int extensionLimit;
+  final VoidCallback onTapExtensions;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final need = (target - score).clamp(0, 9999);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isShooter ? AppleColors.appleBlue : Colors.transparent,
-          width: 2.5,
+    final secondary = tt.bodySmall?.copyWith(
+      color: AppleColors.glyphGraySecondary,
+      fontSize: 11,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 名前（カードの上・中央）。試合開始前はタップで先攻ブレイク切替。
+        InkWell(
+          onTap: onTapName,
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            height: 30,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (isShooter)
+                  const Icon(
+                    Icons.play_arrow_rounded,
+                    size: 20,
+                    color: AppleColors.appleBlue,
+                  ),
+                Flexible(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: tt.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: isShooter
+                          ? AppleColors.appleBlue
+                          : AppleColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
-      child: AppleCard(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(
-              onTap: onTapName,
-              borderRadius: BorderRadius.circular(8),
-              child: SizedBox(
-                height: 26,
-                child: Row(
-                  children: [
-                    if (isShooter)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 4),
-                        child: Icon(Icons.play_arrow_rounded,
-                            size: 18, color: AppleColors.appleBlue),
-                      ),
-                    Expanded(
-                      child: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: tt.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ],
+        const SizedBox(height: 4),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isShooter ? AppleColors.appleBlue : Colors.transparent,
+              width: 3,
+            ),
+          ),
+          child: AppleCard(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ブレイクバッジ（右上）。有無で高さが変わらないよう固定。
+                SizedBox(
+                  height: 20,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: isBreaker ? const _Badge(label: 'ブレイク') : null,
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            // バッジの有無で左右の高さがずれないよう、行の高さを固定する
-            SizedBox(
-              height: 22,
-              child: Row(
-                children: [
-                  if (isBreaker) const _Badge(label: 'ブレイク'),
-                  if (isBreaker && fouls > 0) const SizedBox(width: 4),
-                  if (fouls > 0)
-                    Flexible(
-                      child: _Badge(
-                        label: 'ファウル $fouls',
-                        color: AppleColors.systemOrange,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 6),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '$score',
-                style: tt.displaySmall?.copyWith(
-                  color: AppleColors.appleBlue,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            InkWell(
-              onTap: onTapTarget,
-              borderRadius: BorderRadius.circular(6),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '/ $target点',
-                      style: tt.bodyMedium?.copyWith(
-                        color: AppleColors.glyphGraySecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    const Icon(Icons.edit,
-                        size: 14, color: AppleColors.glyphGraySecondary),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'あと $need点 ・ 今ラック $rackScore点',
-              style:
-                  tt.bodySmall?.copyWith(color: AppleColors.glyphGraySecondary),
-            ),
-            const SizedBox(height: 6),
-            InkWell(
-              onTap: onTapExtensions,
-              borderRadius: BorderRadius.circular(6),
-              child: SizedBox(
-                height: 22,
-                child: Row(
-                  children: [
-                    Text(
-                      '延長',
-                      style: tt.labelSmall?.copyWith(
-                        color: AppleColors.glyphGraySecondary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    if (extensionLimit == 0)
-                      Text(
-                        'なし',
-                        style: tt.labelSmall?.copyWith(
-                          color: AppleColors.glyphGraySecondary,
-                        ),
-                      )
-                    else
-                      for (var i = 0; i < extensionLimit; i++)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 3),
-                          child: Icon(
-                            i < extensionsLeft
-                                ? Icons.circle
-                                : Icons.circle_outlined,
-                            size: 11,
-                            color: i < extensionsLeft
-                                ? AppleColors.systemGreen
-                                : AppleColors.separator,
+                // 点数（特大）＋ 目標点
+                SizedBox(
+                  height: 120,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          '$score',
+                          style: const TextStyle(
+                            fontSize: 120,
+                            height: 1,
+                            fontWeight: FontWeight.w800,
+                            color: AppleColors.textPrimary,
+                            fontFeatures: [FontFeature.tabularFigures()],
                           ),
                         ),
-                    const SizedBox(width: 2),
-                    const Icon(Icons.edit,
-                        size: 13, color: AppleColors.glyphGraySecondary),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: onTapTarget,
+                          child: Text(
+                            '/$target',
+                            style: const TextStyle(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w700,
+                              color: AppleColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // 左下：ファウル  右下：残り点・延長
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const _Badge(
+                          label: 'ファウル',
+                          color: AppleColors.systemOrange,
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (var i = 0; i < 3; i++)
+                              Container(
+                                width: 18,
+                                height: 18,
+                                margin: const EdgeInsets.only(right: 3),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: i < fouls
+                                      ? AppleColors.textPrimary
+                                      : Colors.transparent,
+                                  border: Border.all(
+                                    color: AppleColors.textPrimary,
+                                    width: 1.4,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // 「あと◯点」は試合中に一番よく見るので大きく
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: 'あと ',
+                                    style: tt.bodyMedium?.copyWith(
+                                      color: AppleColors.glyphGraySecondary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: '$need',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      height: 1.1,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppleColors.textPrimary,
+                                      fontFeatures: [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: '点',
+                                    style: tt.bodyMedium?.copyWith(
+                                      color: AppleColors.glyphGraySecondary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              maxLines: 1,
+                            ),
+                          ),
+                          Text(
+                            '今ラック $rackScore点',
+                            maxLines: 1,
+                            style: secondary,
+                          ),
+                          const SizedBox(height: 2),
+                          InkWell(
+                            onTap: onTapExtensions,
+                            borderRadius: BorderRadius.circular(6),
+                            child: SizedBox(
+                              height: 20,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '延長',
+                                    style: secondary?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  if (extensionLimit == 0)
+                                    Text('なし', style: secondary)
+                                  else
+                                    for (var i = 0; i < extensionLimit; i++)
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(right: 2),
+                                        child: Icon(
+                                          i < extensionsLeft
+                                              ? Icons.circle
+                                              : Icons.circle_outlined,
+                                          size: 10,
+                                          color: i < extensionsLeft
+                                              ? AppleColors.systemGreen
+                                              : AppleColors.separator,
+                                        ),
+                                      ),
+                                  const SizedBox(width: 2),
+                                  const Icon(
+                                    Icons.edit,
+                                    size: 12,
+                                    color: AppleColors.glyphGraySecondary,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -787,118 +879,123 @@ class _ShotClockCard extends StatelessWidget {
     } else if (remain <= ShotClock.alertAt) {
       color = AppleColors.systemOrange;
     } else {
-      color = AppleColors.textPrimary;
+      color = AppleColors.appleBlue;
     }
     final progress =
         clock.shotSec == 0 ? 0.0 : (remain / clock.shotSec).clamp(0.0, 1.0);
+    const ringSize = 132.0;
 
     return AppleCard(
-      padding: const EdgeInsets.fromLTRB(14, 10, 8, 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 14),
       backgroundColor: remain <= ShotClock.countdownFrom && clock.running
           ? AppleColors.systemRed.withValues(alpha: 0.08)
           : null,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Text(
-                'ショットクロック',
-                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  clock.running ? '$shooterName の持ち時間' : '停止中',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: tt.bodySmall
-                      ?.copyWith(color: AppleColors.glyphGraySecondary),
-                ),
-              ),
-              IconButton(
-                tooltip: '秒数の設定',
-                visualDensity: VisualDensity.compact,
-                onPressed: onSettings,
-                icon: const Icon(Icons.settings, size: 20),
-                color: AppleColors.glyphGraySecondary,
-              ),
-            ],
-          ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 96,
-                child: Text(
-                  '$remain',
-                  textAlign: TextAlign.center,
-                  style: tt.displayMedium?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w800,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+          // 円形のショットクロック（残り秒を大きく）
+          SizedBox(
+            width: ringSize,
+            height: ringSize,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Container(
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFF2B2B2E),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                Padding(
+                  padding: const EdgeInsets.all(7),
+                  child: CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 12,
+                    color: color,
+                    backgroundColor: Colors.white.withValues(alpha: 0.12),
+                  ),
+                ),
+                Center(
+                  child: Text(
+                    '$remain',
+                    style: const TextStyle(
+                      fontSize: 58,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 8,
-                        color: color == AppleColors.textPrimary
-                            ? AppleColors.appleBlue
-                            : color,
-                        backgroundColor: AppleColors.lightGray,
+                    Expanded(
+                      child: Text(
+                        clock.running ? '$shooterName の持ち時間' : 'ショットクロック 停止中',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodySmall?.copyWith(
+                          color: AppleColors.glyphGraySecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: enabled ? onToggle : null,
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(40),
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 6),
-                            ),
-                            icon: Icon(
-                              clock.running ? Icons.pause : Icons.play_arrow,
-                              size: 18,
-                            ),
-                            label: Text(clock.running ? '一時停止' : '開始'),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: enabled && extensionsLeft > 0
-                                ? onExtension
-                                : null,
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(40),
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 6),
-                              foregroundColor: AppleColors.systemGreen,
-                            ),
-                            child: FittedBox(
-                              child: Text('延長（残り$extensionsLeft）'),
-                            ),
-                          ),
-                        ),
-                      ],
+                    IconButton(
+                      tooltip: '秒数の設定',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onSettings,
+                      icon: const Icon(Icons.settings, size: 20),
+                      color: AppleColors.glyphGraySecondary,
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 6),
-            ],
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    color: color,
+                    backgroundColor: AppleColors.lightGray,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: enabled ? onToggle : null,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                  ),
+                  icon: Icon(
+                    clock.running ? Icons.pause : Icons.play_arrow,
+                    size: 20,
+                  ),
+                  label: Text(
+                    clock.running ? '一時停止' : '開始',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: enabled && extensionsLeft > 0 ? onExtension : null,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                    foregroundColor: AppleColors.systemGreen,
+                  ),
+                  child: Text(
+                    '延長（残り$extensionsLeft）',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 6),
         ],
       ),
     );
