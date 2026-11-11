@@ -7,18 +7,30 @@
 /// - 15球すべて入ったら次のラックへ。ブレイクは勝者ブレイク（ラックの最後の球を入れた人）。
 /// - ブレイクで規定数の球をキッチンに出せなかった場合のみ、ブレイク権が相手に移る。
 class RotationGame {
-  RotationGame({List<int>? targets, int breaker = 0})
+  RotationGame({List<int>? targets, List<int>? extensions, int breaker = 0})
       : targets = List<int>.of(targets ?? const [defaultTarget, defaultTarget]),
+        extensionLimits = List<int>.of(
+          extensions ?? const [defaultExtensions, defaultExtensions],
+        ),
+        extensionsLeft = List<int>.of(
+          extensions ?? const [defaultExtensions, defaultExtensions],
+        ),
         _breaker = breaker,
         _shooter = breaker;
 
   static const int defaultTarget = 120;
   static const int ballCount = 15;
   static const int rackTotal = 120; // 1+2+...+15
+  static const int defaultExtensions = 2;
+  static const int maxExtensions = 5;
 
   final List<int> targets;
   final List<int> scores = [0, 0];
   final List<int> fouls = [0, 0];
+
+  /// 試合全体で使えるエクステンション回数（B級2回・A級3回など、選手ごとに設定）
+  final List<int> extensionLimits;
+  final List<int> extensionsLeft;
 
   /// 現ラックで入った球 → 得点した選手
   final Map<int, int> pocketed = <int, int>{};
@@ -78,6 +90,24 @@ class RotationGame {
     _checkWinner();
   }
 
+  /// エクステンション回数の上限を変更する。使用済み回数は維持する。
+  void setExtensionLimit(int player, int limit) {
+    final n = limit.clamp(0, maxExtensions);
+    if (n == extensionLimits[player]) return;
+    _push();
+    final used = extensionLimits[player] - extensionsLeft[player];
+    extensionLimits[player] = n;
+    extensionsLeft[player] = (n - used).clamp(0, n);
+  }
+
+  /// 手番の選手がエクステンションを使う。残っていなければ false。
+  bool useExtension() {
+    if (winner != null || extensionsLeft[_shooter] <= 0) return false;
+    _push();
+    extensionsLeft[_shooter]--;
+    return true;
+  }
+
   /// 現在の手番の選手が [ball] を入れた。
   void pocket(int ball) {
     if (winner != null) return;
@@ -135,6 +165,9 @@ class RotationGame {
     fouls
       ..[0] = 0
       ..[1] = 0;
+    extensionsLeft
+      ..[0] = extensionLimits[0]
+      ..[1] = extensionLimits[1];
     pocketed.clear();
     rackHistory.clear();
     _undoStack.clear();
@@ -178,6 +211,8 @@ class _Snapshot {
       : targets = List<int>.of(g.targets),
         scores = List<int>.of(g.scores),
         fouls = List<int>.of(g.fouls),
+        extensionLimits = List<int>.of(g.extensionLimits),
+        extensionsLeft = List<int>.of(g.extensionsLeft),
         pocketed = Map<int, int>.of(g.pocketed),
         rackHistory = [for (final r in g.rackHistory) List<int>.of(r)],
         breaker = g._breaker,
@@ -189,6 +224,8 @@ class _Snapshot {
   final List<int> targets;
   final List<int> scores;
   final List<int> fouls;
+  final List<int> extensionLimits;
+  final List<int> extensionsLeft;
   final Map<int, int> pocketed;
   final List<List<int>> rackHistory;
   final int breaker;
@@ -207,6 +244,12 @@ class _Snapshot {
     g.fouls
       ..clear()
       ..addAll(fouls);
+    g.extensionLimits
+      ..clear()
+      ..addAll(extensionLimits);
+    g.extensionsLeft
+      ..clear()
+      ..addAll(extensionsLeft);
     g.pocketed
       ..clear()
       ..addAll(pocketed);

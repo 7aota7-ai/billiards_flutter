@@ -1,34 +1,219 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/rotation_game.dart';
+import '../models/scoreboard_models.dart';
+import '../models/shot_clock.dart';
 import '../theme/apple_theme.dart';
 
 class RotationArgs {
-  const RotationArgs({required this.p1Name, required this.p2Name});
+  const RotationArgs({
+    required this.p1Name,
+    required this.p2Name,
+    this.p1Rank,
+    this.p2Rank,
+  });
 
   final String p1Name;
   final String p2Name;
+  final PlayerRank? p1Rank;
+  final PlayerRank? p2Rank;
 }
 
 class RotationScreen extends StatefulWidget {
-  const RotationScreen({super.key, required this.p1Name, required this.p2Name});
+  const RotationScreen({
+    super.key,
+    required this.p1Name,
+    required this.p2Name,
+    this.p1Rank,
+    this.p2Rank,
+  });
 
   final String p1Name;
   final String p2Name;
+  final PlayerRank? p1Rank;
+  final PlayerRank? p2Rank;
 
   @override
   State<RotationScreen> createState() => _RotationScreenState();
 }
 
+/// クラス別のエクステンション回数の初期値（A級以上3回、それ以外2回）。
+int _defaultExtensionsFor(PlayerRank? rank) =>
+    rank == PlayerRank.a || rank == PlayerRank.sa ? 3 : 2;
+
 class _RotationScreenState extends State<RotationScreen> {
-  final RotationGame _game = RotationGame();
+  late final RotationGame _game = RotationGame(
+    extensions: [
+      _defaultExtensionsFor(widget.p1Rank),
+      _defaultExtensionsFor(widget.p2Rank),
+    ],
+  );
+  final ShotClock _clock = ShotClock();
+  Timer? _ticker;
 
   List<String> get _names => [widget.p1Name, widget.p2Name];
 
-  void _act(VoidCallback action) {
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  /// 入力（球・ミス・ファウル）のあと、ショットクロックを次のショット用に戻して計測する。
+  /// ラックが終わった・試合が終わった・[stopClock] のときは止めて待機。
+  void _act(VoidCallback action, {bool stopClock = false}) {
     HapticFeedback.selectionClick();
-    setState(action);
+    final rackBefore = _game.rackNumber;
+    setState(() {
+      action();
+      if (stopClock || _game.winner != null || _game.rackNumber != rackBefore) {
+        _clock.stopAndReset();
+      } else {
+        _clock.resetAndRun();
+      }
+    });
+    _syncTicker();
+  }
+
+  void _undo() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _game.undo();
+      _clock.running && _game.winner == null
+          ? _clock.resetAndRun()
+          : _clock.stopAndReset();
+    });
+    _syncTicker();
+  }
+
+  void _toggleClock() {
+    setState(() => _clock.running ? _clock.pause() : _clock.start());
+    _syncTicker();
+  }
+
+  void _useExtension() {
+    setState(() {
+      if (_game.useExtension()) _clock.extend();
+    });
+    _syncTicker();
+  }
+
+  void _syncTicker() {
+    if (_clock.running && _game.winner == null) {
+      _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
+    } else {
+      _ticker?.cancel();
+      _ticker = null;
+    }
+  }
+
+  void _onTick() {
+    if (!mounted) return;
+    String? message;
+    setState(() {
+      switch (_clock.tick()) {
+        case ShotClockEvent.none:
+          break;
+        case ShotClockEvent.alert:
+          SystemSound.play(SystemSoundType.alert);
+          HapticFeedback.heavyImpact();
+        case ShotClockEvent.countdown:
+          SystemSound.play(SystemSoundType.click);
+          HapticFeedback.mediumImpact();
+        case ShotClockEvent.expired:
+          HapticFeedback.vibrate();
+          final player = _names[_game.shooter];
+          if (_game.useExtension()) {
+            // エクステンションが残っていれば自動延長
+            _clock.extend();
+            message =
+                '$player：エクステンション自動使用（残り${_game.extensionsLeft[_game.shooter]}回）';
+          } else {
+            // 残っていなければ時間切れファウル → 相手の手番で計測再開
+            _game.foul();
+            _clock.resetAndRun();
+            message = '$player：時間切れファウル';
+          }
+      }
+    });
+    _syncTicker();
+    if (message != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(message!),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+    }
+  }
+
+  Future<void> _editShotSec() async {
+    final result = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('ショットクロック（1ショット）'),
+        children: [
+          for (final sec in const [30, 35, 40, 45, 50, 60])
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop(sec),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 24,
+                    child: sec == _clock.shotSec
+                        ? const Icon(Icons.check, size: 18)
+                        : null,
+                  ),
+                  Text('$sec秒'),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    setState(() => _clock.setShotSec(result));
+  }
+
+  Future<void> _editExtensions(int player) async {
+    final result = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('${_names[player]} のエクステンション回数'),
+        children: [
+          for (var n = 0; n <= RotationGame.maxExtensions; n++)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop(n),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 24,
+                    child: n == _game.extensionLimits[player]
+                        ? const Icon(Icons.check, size: 18)
+                        : null,
+                  ),
+                  Text(
+                    n == 2
+                        ? '2回（B級）'
+                        : n == 3
+                            ? '3回（A級）'
+                            : n == 0
+                                ? 'なし'
+                                : '$n回',
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    setState(() => _game.setExtensionLimit(player, result));
   }
 
   Future<void> _editTarget(int player) async {
@@ -84,7 +269,12 @@ class _RotationScreenState extends State<RotationScreen> {
         ],
       ),
     );
-    if (ok == true) setState(_game.reset);
+    if (ok != true) return;
+    setState(() {
+      _game.reset();
+      _clock.stopAndReset();
+    });
+    _syncTicker();
   }
 
   @override
@@ -146,10 +336,23 @@ class _RotationScreenState extends State<RotationScreen> {
                           ? null
                           : () => setState(() => _game.setBreaker(p)),
                       onTapTarget: () => _editTarget(p),
+                      extensionsLeft: _game.extensionsLeft[p],
+                      extensionLimit: _game.extensionLimits[p],
+                      onTapExtensions: () => _editExtensions(p),
                     ),
                   ),
                 ],
               ],
+            ),
+            const SizedBox(height: 12),
+            _ShotClockCard(
+              clock: _clock,
+              shooterName: _names[_game.shooter],
+              extensionsLeft: _game.extensionsLeft[_game.shooter],
+              enabled: winner == null,
+              onToggle: _toggleClock,
+              onExtension: _useExtension,
+              onSettings: _editShotSec,
             ),
             const SizedBox(height: 12),
             AppleCard(
@@ -216,7 +419,7 @@ class _RotationScreenState extends State<RotationScreen> {
                   if (_game.canBreakFail) ...[
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
-                      onPressed: () => _act(_game.breakFailed),
+                      onPressed: () => _act(_game.breakFailed, stopClock: true),
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(40),
                         foregroundColor: AppleColors.systemOrange,
@@ -258,8 +461,7 @@ class _RotationScreenState extends State<RotationScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed:
-                              _game.canUndo ? () => _act(_game.undo) : null,
+                          onPressed: _game.canUndo ? _undo : null,
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(48),
                           ),
@@ -349,6 +551,8 @@ class _RotationScreenState extends State<RotationScreen> {
                     '● 手球は常に台上の最小番号の球に最初に当てる。正しく当てれば、どの球が入っても得点。\n'
                     '● 球を入れ続ける限り撞き続けられ、入らなければ交代。\n'
                     '● ファウル時に入った球は得点にならず台に戻す。相手はフリーボール（手球を自由に置ける）。\n'
+                    '● ショットクロックは1ショット45秒（設定で変更可）。残り15秒でアラート、5秒前からカウントダウン。\n'
+                    '● エクステンションは試合を通して選手ごとに設定した回数（B級2回・A級3回）。残っていれば時間切れ時に自動で延長し、使い切っていれば時間切れはファウル。\n'
                     '● 15球すべて入ったら次のラック。ブレイクは勝者ブレイク（そのラックで最後の球を入れた人。15番が途中でフロックで入っていたら、最後に入れた球の人）。\n'
                     '● ブレイクで球をキッチンに出せなかった場合のみ、ブレイク権が相手に移る。\n'
                     '● 先に目標点（デフォルト120点）に到達した方の勝ち。',
@@ -383,8 +587,14 @@ class _PlayerPanel extends StatelessWidget {
     required this.isBreaker,
     required this.onTapName,
     required this.onTapTarget,
+    required this.extensionsLeft,
+    required this.extensionLimit,
+    required this.onTapExtensions,
   });
 
+  final int extensionsLeft;
+  final int extensionLimit;
+  final VoidCallback onTapExtensions;
   final String name;
   final int score;
   final int target;
@@ -497,8 +707,199 @@ class _PlayerPanel extends StatelessWidget {
               style:
                   tt.bodySmall?.copyWith(color: AppleColors.glyphGraySecondary),
             ),
+            const SizedBox(height: 6),
+            InkWell(
+              onTap: onTapExtensions,
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                height: 22,
+                child: Row(
+                  children: [
+                    Text(
+                      '延長',
+                      style: tt.labelSmall?.copyWith(
+                        color: AppleColors.glyphGraySecondary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    if (extensionLimit == 0)
+                      Text(
+                        'なし',
+                        style: tt.labelSmall?.copyWith(
+                          color: AppleColors.glyphGraySecondary,
+                        ),
+                      )
+                    else
+                      for (var i = 0; i < extensionLimit; i++)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 3),
+                          child: Icon(
+                            i < extensionsLeft
+                                ? Icons.circle
+                                : Icons.circle_outlined,
+                            size: 11,
+                            color: i < extensionsLeft
+                                ? AppleColors.systemGreen
+                                : AppleColors.separator,
+                          ),
+                        ),
+                    const SizedBox(width: 2),
+                    const Icon(Icons.edit,
+                        size: 13, color: AppleColors.glyphGraySecondary),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ShotClockCard extends StatelessWidget {
+  const _ShotClockCard({
+    required this.clock,
+    required this.shooterName,
+    required this.extensionsLeft,
+    required this.enabled,
+    required this.onToggle,
+    required this.onExtension,
+    required this.onSettings,
+  });
+
+  final ShotClock clock;
+  final String shooterName;
+  final int extensionsLeft;
+  final bool enabled;
+  final VoidCallback onToggle;
+  final VoidCallback onExtension;
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final remain = clock.remaining;
+    final Color color;
+    if (remain <= ShotClock.countdownFrom) {
+      color = AppleColors.systemRed;
+    } else if (remain <= ShotClock.alertAt) {
+      color = AppleColors.systemOrange;
+    } else {
+      color = AppleColors.textPrimary;
+    }
+    final progress =
+        clock.shotSec == 0 ? 0.0 : (remain / clock.shotSec).clamp(0.0, 1.0);
+
+    return AppleCard(
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 12),
+      backgroundColor: remain <= ShotClock.countdownFrom && clock.running
+          ? AppleColors.systemRed.withValues(alpha: 0.08)
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'ショットクロック',
+                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  clock.running ? '$shooterName の持ち時間' : '停止中',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: tt.bodySmall
+                      ?.copyWith(color: AppleColors.glyphGraySecondary),
+                ),
+              ),
+              IconButton(
+                tooltip: '秒数の設定',
+                visualDensity: VisualDensity.compact,
+                onPressed: onSettings,
+                icon: const Icon(Icons.settings, size: 20),
+                color: AppleColors.glyphGraySecondary,
+              ),
+            ],
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 96,
+                child: Text(
+                  '$remain',
+                  textAlign: TextAlign.center,
+                  style: tt.displayMedium?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 8,
+                        color: color == AppleColors.textPrimary
+                            ? AppleColors.appleBlue
+                            : color,
+                        backgroundColor: AppleColors.lightGray,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: enabled ? onToggle : null,
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(40),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
+                            ),
+                            icon: Icon(
+                              clock.running ? Icons.pause : Icons.play_arrow,
+                              size: 18,
+                            ),
+                            label: Text(clock.running ? '一時停止' : '開始'),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: enabled && extensionsLeft > 0
+                                ? onExtension
+                                : null,
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(40),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
+                              foregroundColor: AppleColors.systemGreen,
+                            ),
+                            child: FittedBox(
+                              child: Text('延長（残り$extensionsLeft）'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+          ),
+        ],
       ),
     );
   }

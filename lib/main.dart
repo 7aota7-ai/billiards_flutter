@@ -70,7 +70,12 @@ class BilliardsApp extends StatelessWidget {
             return MaterialPageRoute<void>(
               settings: const RouteSettings(name: '/rotation'),
               builder: (_) => args is RotationArgs
-                  ? RotationScreen(p1Name: args.p1Name, p2Name: args.p2Name)
+                  ? RotationScreen(
+                      p1Name: args.p1Name,
+                      p2Name: args.p2Name,
+                      p1Rank: args.p1Rank,
+                      p2Rank: args.p2Rank,
+                    )
                   : const RotationScreen(p1Name: 'あなた', p2Name: '相手'),
             );
           case '/count-nine':

@@ -552,7 +552,12 @@ class _SetupScreenState extends State<SetupScreen> {
     final p2 = _p2Name.text.trim().isEmpty ? '相手' : _p2Name.text.trim();
     await Navigator.of(context).pushNamed<void>(
       '/rotation',
-      arguments: RotationArgs(p1Name: p1, p2Name: p2),
+      arguments: RotationArgs(
+        p1Name: p1,
+        p2Name: p2,
+        p1Rank: _p1Rank,
+        p2Rank: _p2Rank,
+      ),
     );
   }
 
