@@ -88,6 +88,7 @@ class RotationGame {
           extensions ?? const [defaultExtensions, defaultExtensions],
         ),
         _breaker = breaker,
+        _startBreaker = breaker,
         _shooter = breaker {
     _openInning();
   }
@@ -116,6 +117,9 @@ class RotationGame {
   final List<RotationInning> innings = <RotationInning>[];
 
   int _breaker;
+
+  /// 試合開始時の先攻ブレイク（もう一度対戦するときに同じ条件で始めるため）
+  int _startBreaker;
   int _shooter;
   int? winner;
   int _plays = 0;
@@ -186,6 +190,7 @@ class RotationGame {
   void setBreaker(int player) {
     if (isStarted) return;
     _breaker = player;
+    _startBreaker = player;
     _shooter = player;
     innings
       ..clear()
@@ -278,7 +283,10 @@ class RotationGame {
     _undoStack.removeLast().restoreTo(this);
   }
 
+  /// 同じ条件（目標点・エクステンション回数・先攻ブレイク）で試合をやり直す。
+  /// 点数・ファウル・使用済みエクステンション・ラック／イニング記録をリセット。
   void reset() {
+    _breaker = _startBreaker;
     scores
       ..[0] = 0
       ..[1] = 0;

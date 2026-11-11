@@ -41,17 +41,9 @@ class RotationScreen extends StatefulWidget {
   State<RotationScreen> createState() => _RotationScreenState();
 }
 
-/// クラス別のエクステンション回数の初期値（A級以上3回、それ以外2回）。
-int _defaultExtensionsFor(PlayerRank? rank) =>
-    rank == PlayerRank.a || rank == PlayerRank.sa ? 3 : 2;
-
 class _RotationScreenState extends State<RotationScreen> {
-  late final RotationGame _game = RotationGame(
-    extensions: [
-      _defaultExtensionsFor(widget.p1Rank),
-      _defaultExtensionsFor(widget.p2Rank),
-    ],
-  );
+  // エクステンションは両者とも初期値2回（選手パネルの「延長」から変更可）
+  final RotationGame _game = RotationGame();
   final ShotClock _clock = ShotClock();
   Timer? _ticker;
 
@@ -252,28 +244,39 @@ class _RotationScreenState extends State<RotationScreen> {
     setState(() => _game.setTarget(player, result));
   }
 
-  Future<void> _confirmReset() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('試合をリセットしますか？'),
-        content: const Text('得点とラック履歴がすべて消えます。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('キャンセル'),
+  /// もう一度対戦する：同じ条件（目標点・延長回数・秒数・先攻ブレイク）で、
+  /// 点数・延長・ファウル・記録をリセット。試合の途中なら確認を出す。
+  Future<void> _rematch() => _confirmReset(askOnlyMidGame: true);
+
+  Future<void> _confirmReset({bool askOnlyMidGame = false}) async {
+    final midGame = _game.isStarted && _game.winner == null;
+    if (!askOnlyMidGame || midGame) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(midGame ? '試合の途中です。やり直しますか？' : '試合をリセットしますか？'),
+          content: const Text(
+            '点数・延長・ファウル・ラック／イニング記録がリセットされます。\n'
+            '目標点・延長回数・ショットクロック秒数・先攻ブレイクはそのままです。',
           ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(ctx).colorScheme.error,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('キャンセル'),
             ),
-            child: const Text('リセット'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(ctx).colorScheme.error,
+              ),
+              child: const Text('やり直す'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    if (!mounted) return;
     setState(() {
       _game.reset();
       _clock.stopAndReset();
@@ -495,6 +498,23 @@ class _RotationScreenState extends State<RotationScreen> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 4),
+                    // 同じ条件でもう一度（点数・延長・ファウルをリセット）
+                    Center(
+                      child: TextButton(
+                        onPressed: _rematch,
+                        child: const Text(
+                          'もう一度対戦する',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppleColors.linkBlue,
+                            color: AppleColors.linkBlue,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),

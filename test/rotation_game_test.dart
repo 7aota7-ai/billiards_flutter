@@ -215,4 +215,31 @@ void main() {
       expect(g.currentInning.end, InningEnd.win);
     });
   });
+
+  test('エクステンションの初期値は両者2回', () {
+    expect(RotationGame().extensionLimits, [2, 2]);
+  });
+
+  test('もう一度対戦：点数・延長・ファウルをリセットし、目標点・延長回数・先攻は維持', () {
+    final g = RotationGame(targets: [200, 200])..setBreaker(1);
+    g.setTarget(0, 90);
+    g.setExtensionLimit(1, 3);
+    for (var n = 1; n <= 15; n++) {
+      g.pocket(n); // 相手が取り切り → 相手ブレイク継続
+    }
+    g.foul();
+    g.useExtension();
+    g.reset();
+    expect(g.scores, [0, 0]);
+    expect(g.fouls, [0, 0]);
+    expect(g.extensionsLeft, [2, 3]);
+    expect(g.extensionLimits, [2, 3]);
+    expect(g.targets, [90, 200]);
+    expect(g.breaker, 1);
+    expect(g.shooter, 1);
+    expect(g.rackNumber, 1);
+    expect(g.innings.single.player, 1);
+    expect(g.canUndo, isFalse);
+    expect(g.isStarted, isFalse);
+  });
 }
