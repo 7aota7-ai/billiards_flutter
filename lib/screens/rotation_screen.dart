@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../models/rotation_game.dart';
 import '../models/scoreboard_models.dart';
 import '../models/shot_clock.dart';
+import '../services/clock_sound.dart';
 import '../theme/apple_theme.dart';
 
 class RotationArgs {
@@ -63,9 +64,11 @@ class _RotationScreenState extends State<RotationScreen> {
   }
 
   /// 入力（球・ミス・ファウル）のあと、ショットクロックを次のショット用に戻して計測する。
-  /// ラックが終わった・試合が終わった・[stopClock] のときは止めて待機。
+  /// ラックが終わった・試合が終わった・[stopClock]（ファウル・ブレイク交代）のときは
+  /// 止めて「開始」待ち。
   void _act(VoidCallback action, {bool stopClock = false}) {
     HapticFeedback.selectionClick();
+    ClockSound.unlock(); // Web（iOS Safari）はタップ中に音を有効化する必要がある
     final rackBefore = _game.rackNumber;
     setState(() {
       action();
@@ -80,6 +83,7 @@ class _RotationScreenState extends State<RotationScreen> {
 
   void _undo() {
     HapticFeedback.selectionClick();
+    ClockSound.unlock();
     setState(() {
       _game.undo();
       _clock.running && _game.winner == null
@@ -90,11 +94,13 @@ class _RotationScreenState extends State<RotationScreen> {
   }
 
   void _toggleClock() {
+    ClockSound.unlock();
     setState(() => _clock.running ? _clock.pause() : _clock.start());
     _syncTicker();
   }
 
   void _useExtension() {
+    ClockSound.unlock();
     setState(() {
       if (_game.useExtension()) _clock.extend();
     });
@@ -118,13 +124,11 @@ class _RotationScreenState extends State<RotationScreen> {
         case ShotClockEvent.none:
           break;
         case ShotClockEvent.alert:
-          SystemSound.play(SystemSoundType.alert);
-          HapticFeedback.heavyImpact();
+          ClockSound.play(ClockBeep.alert);
         case ShotClockEvent.countdown:
-          SystemSound.play(SystemSoundType.click);
-          HapticFeedback.mediumImpact();
+          ClockSound.play(ClockBeep.countdown);
         case ShotClockEvent.expired:
-          HapticFeedback.vibrate();
+          ClockSound.play(ClockBeep.expired);
           final player = _names[_game.shooter];
           if (_game.useExtension()) {
             // エクステンションが残っていれば自動延長
@@ -132,9 +136,9 @@ class _RotationScreenState extends State<RotationScreen> {
             message =
                 '$player：エクステンション自動使用（残り${_game.extensionsLeft[_game.shooter]}回）';
           } else {
-            // 残っていなければ時間切れファウル → 相手の手番で計測再開
+            // 残っていなければ時間切れファウル → 相手の手番。クロックは止めて「開始」待ち
             _game.foul();
-            _clock.resetAndRun();
+            _clock.stopAndReset(); // ファウル後は相手がボールを置くまで待機
             message = '$player：時間切れファウル';
           }
       }
@@ -321,48 +325,56 @@ class _RotationScreenState extends State<RotationScreen> {
                     ),
                   ),
                 ),
-              // 左右のパネルは各行の高さを固定しているので常に同じ高さになる
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var p = 0; p < 2; p++) ...[
-                    if (p == 1) const SizedBox(width: 10),
-                    if (p == 1 && wide) ...[
-                      SizedBox(
-                        width: 240,
-                        child: _ShotClockCard(
-                          vertical: true,
-                          clock: _clock,
-                          shooterName: _names[_game.shooter],
-                          extensionsLeft: _game.extensionsLeft[_game.shooter],
-                          enabled: winner == null,
-                          onToggle: _toggleClock,
-                          onExtension: _useExtension,
-                          onSettings: _editShotSec,
+              // 左右のパネルは各行の高さを固定しているので常に同じ高さになる。
+              // ワイド時は間にショットクロックが入るので、行の高さを一番高い
+              // ブロックに合わせ、3枚のカードを同じ高さに伸ばす。
+              _equalHeight(
+                enabled: wide,
+                child: Row(
+                  crossAxisAlignment: wide
+                      ? CrossAxisAlignment.stretch
+                      : CrossAxisAlignment.start,
+                  children: [
+                    for (var p = 0; p < 2; p++) ...[
+                      if (p == 1) const SizedBox(width: 10),
+                      if (p == 1 && wide) ...[
+                        SizedBox(
+                          width: 240,
+                          child: _ShotClockCard(
+                            vertical: true,
+                            clock: _clock,
+                            shooterName: _names[_game.shooter],
+                            extensionsLeft: _game.extensionsLeft[_game.shooter],
+                            enabled: winner == null,
+                            onToggle: _toggleClock,
+                            onExtension: _useExtension,
+                            onSettings: _editShotSec,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                      Expanded(
+                        child: _PlayerPanel(
+                          name: _names[p],
+                          score: _game.scores[p],
+                          target: _game.targets[p],
+                          rackScore: _game.currentRackScores[p],
+                          fouls: _game.fouls[p],
+                          isShooter: winner == null && _game.shooter == p,
+                          isBreaker: _game.breaker == p,
+                          onTapName: _game.isStarted
+                              ? null
+                              : () => setState(() => _game.setBreaker(p)),
+                          onTapTarget: () => _editTarget(p),
+                          extensionsLeft: _game.extensionsLeft[p],
+                          extensionLimit: _game.extensionLimits[p],
+                          onTapExtensions: () => _editExtensions(p),
+                          fillHeight: wide,
                         ),
                       ),
-                      const SizedBox(width: 10),
                     ],
-                    Expanded(
-                      child: _PlayerPanel(
-                        name: _names[p],
-                        score: _game.scores[p],
-                        target: _game.targets[p],
-                        rackScore: _game.currentRackScores[p],
-                        fouls: _game.fouls[p],
-                        isShooter: winner == null && _game.shooter == p,
-                        isBreaker: _game.breaker == p,
-                        onTapName: _game.isStarted
-                            ? null
-                            : () => setState(() => _game.setBreaker(p)),
-                        onTapTarget: () => _editTarget(p),
-                        extensionsLeft: _game.extensionsLeft[p],
-                        extensionLimit: _game.extensionLimits[p],
-                        onTapExtensions: () => _editExtensions(p),
-                      ),
-                    ),
                   ],
-                ],
+                ),
               ),
               const SizedBox(height: 12),
               AppleCard(
@@ -454,8 +466,9 @@ class _RotationScreenState extends State<RotationScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: FilledButton(
-                            onPressed:
-                                winner != null ? null : () => _act(_game.foul),
+                            onPressed: winner != null
+                                ? null
+                                : () => _act(_game.foul, stopClock: true),
                             style: _actionStyle(
                               filled: AppleColors.systemOrange,
                             ),
@@ -574,7 +587,7 @@ class _RotationScreenState extends State<RotationScreen> {
                       '● 手球は常に台上の最小番号の球に最初に当てる。正しく当てれば、どの球が入っても得点。\n'
                       '● 球を入れ続ける限り撞き続けられ、入らなければ交代。\n'
                       '● ファウル時に入った球は得点にならず台に戻す。相手はフリーボール（手球を自由に置ける）。\n'
-                      '● ショットクロックは1ショット45秒（設定で変更可）。残り15秒でアラート、5秒前からカウントダウン。\n'
+                      '● ショットクロックは1ショット45秒（設定で変更可）。残り15秒でアラート、5秒前からカウントダウン。ファウル（時間切れを含む）で手番が移ったときは一時停止し、「開始」でカウント再開。\n'
                       '● エクステンションは試合を通して選手ごとに設定した回数（B級2回・A級3回）。残っていれば時間切れ時に自動で延長し、使い切っていれば時間切れはファウル。\n'
                       '● 15球すべて入ったら次のラック。ブレイクは勝者ブレイク（そのラックで最後の球を入れた人。15番が途中でフロックで入っていたら、最後に入れた球の人）。\n'
                       '● ブレイクで球をキッチンに出せなかった場合のみ、ブレイク権が相手に移る。\n'
@@ -615,6 +628,9 @@ class _RotationScreenState extends State<RotationScreen> {
     );
   }
 
+  static Widget _equalHeight({required bool enabled, required Widget child}) =>
+      enabled ? IntrinsicHeight(child: child) : child;
+
   static String _initial(String name) {
     final t = name.trim();
     return t.isEmpty ? '?' : String.fromCharCode(t.runes.first);
@@ -635,7 +651,11 @@ class _PlayerPanel extends StatelessWidget {
     required this.extensionsLeft,
     required this.extensionLimit,
     required this.onTapExtensions,
+    this.fillHeight = false,
   });
+
+  /// true: 親（行）の高さいっぱいにカードを伸ばす（ワイド時に高さをそろえる用）
+  final bool fillHeight;
 
   final String name;
   final int score;
@@ -695,198 +715,208 @@ class _PlayerPanel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isShooter ? AppleColors.appleBlue : Colors.transparent,
-              width: 3,
+        _expandIf(
+          fillHeight,
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isShooter ? AppleColors.appleBlue : Colors.transparent,
+                width: 3,
+              ),
             ),
-          ),
-          child: AppleCard(
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ブレイクバッジ（右上）。有無で高さが変わらないよう固定。
-                SizedBox(
-                  height: 20,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: isBreaker ? const _Badge(label: 'ブレイク') : null,
-                  ),
-                ),
-                // 点数（特大）＋ 目標点
-                SizedBox(
-                  height: 120,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          '$score',
-                          style: const TextStyle(
-                            fontSize: 120,
-                            height: 1,
-                            fontWeight: FontWeight.w800,
-                            color: AppleColors.textPrimary,
-                            fontFeatures: [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: onTapTarget,
-                          child: Text(
-                            '/$target',
-                            style: const TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.w700,
-                              color: AppleColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
+            child: AppleCard(
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                // 高さを伸ばしたときは、上（ブレイク・点数）と下（ファウル等）に分ける
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // ブレイクバッジ（右上）。有無で高さが変わらないよう固定。
+                  SizedBox(
+                    height: 20,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: isBreaker ? const _Badge(label: 'ブレイク') : null,
                     ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                // 左下：ファウル  右下：残り点・延長
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const _Badge(
-                          label: 'ファウル',
-                          color: AppleColors.systemOrange,
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
+                  // 点数（特大）＋ 目標点。
+                  // 高さをそろえるとき（fillHeight）は Flexible にして、
+                  // 計算上のわずかな誤差は点数を少し縮めて吸収する（はみ出し防止）。
+                  _flexibleIf(
+                    fillHeight,
+                    SizedBox(
+                      height: 120,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
                           children: [
-                            for (var i = 0; i < 3; i++)
-                              Container(
-                                width: 18,
-                                height: 18,
-                                margin: const EdgeInsets.only(right: 3),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: i < fouls
-                                      ? AppleColors.textPrimary
-                                      : Colors.transparent,
-                                  border: Border.all(
-                                    color: AppleColors.textPrimary,
-                                    width: 1.4,
-                                  ),
+                            Text(
+                              '$score',
+                              style: const TextStyle(
+                                fontSize: 120,
+                                height: 1,
+                                fontWeight: FontWeight.w800,
+                                color: AppleColors.textPrimary,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: onTapTarget,
+                              child: Text(
+                                '/$target',
+                                style: const TextStyle(
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppleColors.textPrimary,
                                 ),
                               ),
+                            ),
                           ],
                         ),
-                      ],
+                      ),
                     ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Column(
+                  ),
+                  const SizedBox(height: 6),
+                  // 左下：ファウル  右下：残り点・延長
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // 「あと◯点」は試合中に一番よく見るので大きく
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text.rich(
-                              TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: 'あと ',
-                                    style: tt.bodyMedium?.copyWith(
-                                      color: AppleColors.glyphGraySecondary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text: '$need',
-                                    style: const TextStyle(
-                                      fontSize: 24,
-                                      height: 1.1,
-                                      fontWeight: FontWeight.w800,
+                          const _Badge(
+                            label: 'ファウル',
+                            color: AppleColors.systemOrange,
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (var i = 0; i < 3; i++)
+                                Container(
+                                  width: 18,
+                                  height: 18,
+                                  margin: const EdgeInsets.only(right: 3),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: i < fouls
+                                        ? AppleColors.textPrimary
+                                        : Colors.transparent,
+                                    border: Border.all(
                                       color: AppleColors.textPrimary,
-                                      fontFeatures: [
-                                        FontFeature.tabularFigures(),
-                                      ],
+                                      width: 1.4,
                                     ),
                                   ),
-                                  TextSpan(
-                                    text: '点',
-                                    style: tt.bodyMedium?.copyWith(
-                                      color: AppleColors.glyphGraySecondary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              maxLines: 1,
-                            ),
-                          ),
-                          Text(
-                            '今ラック $rackScore点',
-                            maxLines: 1,
-                            style: secondary,
-                          ),
-                          const SizedBox(height: 2),
-                          InkWell(
-                            onTap: onTapExtensions,
-                            borderRadius: BorderRadius.circular(6),
-                            child: SizedBox(
-                              height: 20,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '延長',
-                                    style: secondary?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 3),
-                                  if (extensionLimit == 0)
-                                    Text('なし', style: secondary)
-                                  else
-                                    for (var i = 0; i < extensionLimit; i++)
-                                      Padding(
-                                        padding:
-                                            const EdgeInsets.only(right: 2),
-                                        child: Icon(
-                                          i < extensionsLeft
-                                              ? Icons.circle
-                                              : Icons.circle_outlined,
-                                          size: 10,
-                                          color: i < extensionsLeft
-                                              ? AppleColors.systemGreen
-                                              : AppleColors.separator,
-                                        ),
-                                      ),
-                                  const SizedBox(width: 2),
-                                  const Icon(
-                                    Icons.edit,
-                                    size: 12,
-                                    color: AppleColors.glyphGraySecondary,
-                                  ),
-                                ],
-                              ),
-                            ),
+                                ),
+                            ],
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // 「あと◯点」は試合中に一番よく見るので大きく
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: 'あと ',
+                                      style: tt.bodyMedium?.copyWith(
+                                        color: AppleColors.glyphGraySecondary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: '$need',
+                                      style: const TextStyle(
+                                        fontSize: 24,
+                                        height: 1.1,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppleColors.textPrimary,
+                                        fontFeatures: [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: '点',
+                                      style: tt.bodyMedium?.copyWith(
+                                        color: AppleColors.glyphGraySecondary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                maxLines: 1,
+                              ),
+                            ),
+                            Text(
+                              '今ラック $rackScore点',
+                              maxLines: 1,
+                              style: secondary,
+                            ),
+                            const SizedBox(height: 2),
+                            InkWell(
+                              onTap: onTapExtensions,
+                              borderRadius: BorderRadius.circular(6),
+                              child: SizedBox(
+                                height: 20,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '延長',
+                                      style: secondary?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 3),
+                                    if (extensionLimit == 0)
+                                      Text('なし', style: secondary)
+                                    else
+                                      for (var i = 0; i < extensionLimit; i++)
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(right: 2),
+                                          child: Icon(
+                                            i < extensionsLeft
+                                                ? Icons.circle
+                                                : Icons.circle_outlined,
+                                            size: 10,
+                                            color: i < extensionsLeft
+                                                ? AppleColors.systemGreen
+                                                : AppleColors.separator,
+                                          ),
+                                        ),
+                                    const SizedBox(width: 2),
+                                    const Icon(
+                                      Icons.edit,
+                                      size: 12,
+                                      color: AppleColors.glyphGraySecondary,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -894,6 +924,14 @@ class _PlayerPanel extends StatelessWidget {
     );
   }
 }
+
+/// [expand] のとき Column 内で残りの高さいっぱいに広げる。
+Widget _expandIf(bool expand, Widget child) =>
+    expand ? Expanded(child: child) : child;
+
+/// [flexible] のとき、足りなければ縮めてよい子にする（高さに上限がある Column 用）。
+Widget _flexibleIf(bool flexible, Widget child) =>
+    flexible ? Flexible(child: child) : child;
 
 class _ShotClockCard extends StatelessWidget {
   const _ShotClockCard({
@@ -989,18 +1027,22 @@ class _ShotClockCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          AppleCard(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-            backgroundColor: cardColor,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(child: _ring(132, progress, color, remain)),
-                const SizedBox(height: 10),
-                toggleButton,
-                const SizedBox(height: 6),
-                extensionButton,
-              ],
+          // 行の高さ（＝点数カードと同じ高さ）いっぱいに伸ばし、中身は中央寄せ
+          Expanded(
+            child: AppleCard(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              backgroundColor: cardColor,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Center(child: _ring(132, progress, color, remain)),
+                  const SizedBox(height: 10),
+                  toggleButton,
+                  const SizedBox(height: 6),
+                  extensionButton,
+                ],
+              ),
             ),
           ),
         ],
