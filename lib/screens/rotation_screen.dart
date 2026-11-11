@@ -359,6 +359,7 @@ class _RotationScreenState extends State<RotationScreen> {
                           score: _game.scores[p],
                           target: _game.targets[p],
                           rackScore: _game.currentRackScores[p],
+                          rackInnings: _game.rackInnings(p),
                           fouls: _game.fouls[p],
                           isShooter: winner == null && _game.shooter == p,
                           isBreaker: _game.breaker == p,
@@ -509,6 +510,10 @@ class _RotationScreenState extends State<RotationScreen> {
                   onExtension: _useExtension,
                   onSettings: _editShotSec,
                 ),
+              if (_game.isStarted) ...[
+                const SizedBox(height: 12),
+                _StatsCard(game: _game, names: _names),
+              ],
               if (_game.rackHistory.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 AppleCard(
@@ -643,6 +648,7 @@ class _PlayerPanel extends StatelessWidget {
     required this.score,
     required this.target,
     required this.rackScore,
+    required this.rackInnings,
     required this.fouls,
     required this.isShooter,
     required this.isBreaker,
@@ -661,6 +667,9 @@ class _PlayerPanel extends StatelessWidget {
   final int score;
   final int target;
   final int rackScore;
+
+  /// 現ラックのイニング数（手番を受け取った回数）
+  final int rackInnings;
   final int fouls;
   final bool isShooter;
   final bool isBreaker;
@@ -862,10 +871,27 @@ class _PlayerPanel extends StatelessWidget {
                                 maxLines: 1,
                               ),
                             ),
-                            Text(
-                              '今ラック $rackScore点',
-                              maxLines: 1,
-                              style: secondary,
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    '今ラック $rackScore点',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: secondary,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // 現ラックのイニング数（手番を受け取った回数）
+                                Text(
+                                  'イニング $rackInnings',
+                                  maxLines: 1,
+                                  style: secondary?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppleColors.textPrimary,
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 2),
                             InkWell(
@@ -1116,6 +1142,154 @@ class _ShotClockCard extends StatelessWidget {
                 color: Colors.white,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 試合の成績（イニング記録からの集計）と、イニングごとの得点メモ。
+class _StatsCard extends StatelessWidget {
+  const _StatsCard({required this.game, required this.names});
+
+  final RotationGame game;
+  final List<String> names;
+
+  static String _avg(double v) => v.toStringAsFixed(1);
+
+  static String _endLabel(InningEnd? end) {
+    switch (end) {
+      case InningEnd.miss:
+        return 'ミス';
+      case InningEnd.foul:
+        return 'ファウル';
+      case InningEnd.breakFailed:
+        return 'ブレイク交代';
+      case InningEnd.rackOut:
+        return '取り切り';
+      case InningEnd.win:
+        return '勝利';
+      case null:
+        return '進行中';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final stats = [game.statsFor(0), game.statsFor(1)];
+    final label = tt.bodySmall?.copyWith(color: AppleColors.glyphGraySecondary);
+    final value = tt.bodyMedium?.copyWith(
+      fontWeight: FontWeight.w700,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+
+    TableRow row(String title, String Function(RotationStats s) f) {
+      return TableRow(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Text(title, style: label),
+          ),
+          for (final s in stats)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Text(f(s), textAlign: TextAlign.center, style: value),
+            ),
+        ],
+      );
+    }
+
+    final completed = game.rackHistory.length;
+    final log = game.innings.reversed.toList(); // 新しい順
+
+    return AppleCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '成績',
+            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Table(
+            columnWidths: const {0: FlexColumnWidth(1.4)},
+            children: [
+              TableRow(
+                children: [
+                  const SizedBox.shrink(),
+                  for (final n in names)
+                    Text(
+                      n,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          tt.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                ],
+              ),
+              row('イニング数', (s) => '${s.innings}'),
+              row('平均得点 / イニング', (s) => _avg(s.pointsPerInning)),
+              row('ハイラン（1イニング最高）', (s) => '${s.highRun}'),
+              row('ミス', (s) => '${s.misses}'),
+              row('ファウル', (s) => '${s.fouls}'),
+              row(
+                '平均得点 / ラック（終了$completedラック）',
+                (s) => completed == 0 ? '-' : _avg(s.pointsPerRack),
+              ),
+            ],
+          ),
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              title: Text(
+                'イニング記録（${game.innings.length}）',
+                style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              children: [
+                for (final i in log)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 64,
+                          child: Text('ラック ${i.rack}', style: label),
+                        ),
+                        Expanded(
+                          child: Text(
+                            names[i.player],
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: tt.bodySmall,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 56,
+                          child: Text(
+                            '${i.points}点',
+                            textAlign: TextAlign.right,
+                            style: value,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 84,
+                          child: Text(
+                            _endLabel(i.end),
+                            textAlign: TextAlign.right,
+                            style: label,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
           ),
         ],

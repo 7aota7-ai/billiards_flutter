@@ -125,4 +125,94 @@ void main() {
     g.setBreaker(0);
     expect(g.breaker, 1);
   });
+
+  group('イニング記録', () {
+    test('手番を受け取るたびにイニングが増え、得点が記録される', () {
+      final g = RotationGame(targets: [500, 500]);
+      expect(g.rackInnings(0), 1); // ブレイクで1イニング目
+      expect(g.rackInnings(1), 0);
+      g.pocket(1);
+      g.pocket(2);
+      g.miss();
+      expect(g.rackInnings(1), 1);
+      g.pocket(3);
+      g.foul();
+      expect(g.rackInnings(0), 2);
+      expect([for (final i in g.innings) i.points], [3, 3, 0]);
+      expect(g.innings[0].end, InningEnd.miss);
+      expect(g.innings[1].end, InningEnd.foul);
+      expect(g.innings[2].end, isNull);
+    });
+
+    test('ラックが替わるとイニング数は新しいラックで数え直す', () {
+      final g = RotationGame(targets: [500, 500]);
+      for (var n = 1; n <= 15; n++) {
+        g.pocket(n);
+      }
+      expect(g.rackNumber, 2);
+      expect(g.innings[0].end, InningEnd.rackOut);
+      expect(g.innings[0].points, 120);
+      expect(g.rackInnings(0), 1); // 新ラックのブレイク
+      expect(g.rackInnings(1), 0);
+    });
+
+    test('ブレイク交代はイニング数・成績に数えない', () {
+      final g = RotationGame()..breakFailed();
+      expect(g.innings.first.end, InningEnd.breakFailed);
+      expect(g.statsFor(0).innings, 0);
+      expect(g.shooter, 1);
+      expect(g.rackInnings(1), 1);
+    });
+
+    test('成績：平均得点・ミス・ファウル・ハイラン・ラック平均', () {
+      final g = RotationGame(targets: [500, 500]);
+      // ラック1：あなた 1+2+3=6 → ミス、相手 4..15=114 で取り切り
+      g.pocket(1);
+      g.pocket(2);
+      g.pocket(3);
+      g.miss();
+      for (var n = 4; n <= 15; n++) {
+        g.pocket(n);
+      }
+      // ラック2：相手ブレイク → ファウル、あなた 1 → ミス
+      g.foul();
+      g.pocket(1);
+      g.miss();
+      final me = g.statsFor(0);
+      expect(me.innings, 2);
+      expect(me.points, 7);
+      expect(me.misses, 2);
+      expect(me.fouls, 0);
+      expect(me.highRun, 6);
+      expect(me.pointsPerInning, 3.5);
+      expect(me.pointsPerRack, 6);
+      final opp = g.statsFor(1);
+      expect(opp.innings, 3); // 114点のイニング・ファウル・進行中
+      expect(opp.fouls, 1);
+      expect(opp.highRun, 114);
+      expect(opp.pointsPerRack, 114);
+    });
+
+    test('取消でイニング記録も戻る', () {
+      final g = RotationGame()..pocket(1);
+      g.miss();
+      expect(g.innings.length, 2);
+      g.undo();
+      expect(g.innings.length, 1);
+      expect(g.innings.single.end, isNull);
+      expect(g.innings.single.points, 1);
+      g.undo();
+      expect(g.innings.single.points, 0);
+    });
+
+    test('勝利でイニングを閉じる・開始前のブレイク変更でイニングの選手も替わる', () {
+      final g = RotationGame()..setBreaker(1);
+      expect(g.innings.single.player, 1);
+      g.setTarget(1, 3);
+      g.pocket(1);
+      g.pocket(2);
+      expect(g.winner, 1);
+      expect(g.currentInning.end, InningEnd.win);
+    });
+  });
 }

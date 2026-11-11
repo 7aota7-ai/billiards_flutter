@@ -1,11 +1,83 @@
-/// ローテーション（15ボール）の試合状態。
-///
-/// 一般的なルール:
-/// - 1〜15番の球を使い、入れた球の番号がそのまま得点（1ラック合計120点）。
-/// - 先に目標点（デフォルト120点・選手ごとに変更可）へ到達した選手の勝ち。
-/// - ファウル時に入った球は得点にならず台に戻す（＝入力しない）。相手はフリーボール。
-/// - 15球すべて入ったら次のラックへ。ブレイクは勝者ブレイク（ラックの最後の球を入れた人）。
-/// - ブレイクで規定数の球をキッチンに出せなかった場合のみ、ブレイク権が相手に移る。
+// ローテーション（15ボール）の試合状態。
+//
+// 一般的なルール:
+// - 1〜15番の球を使い、入れた球の番号がそのまま得点（1ラック合計120点）。
+// - 先に目標点（デフォルト120点・選手ごとに変更可）へ到達した選手の勝ち。
+// - ファウル時に入った球は得点にならず台に戻す（＝入力しない）。相手はフリーボール。
+// - 15球すべて入ったら次のラックへ。ブレイクは勝者ブレイク（ラックの最後の球を入れた人）。
+// - ブレイクで規定数の球をキッチンに出せなかった場合のみ、ブレイク権が相手に移る。
+//
+// イニング: 選手が手番を受け取ってから手放すまで（ミス・ファウル・ブレイク交代・
+// ラック終了・試合終了）を1イニングとし、イニングごとの得点を記録する。
+
+/// イニングの終わり方
+enum InningEnd {
+  /// ミス（ノーイン）で交代
+  miss,
+
+  /// ファウル（時間切れを含む）で交代
+  foul,
+
+  /// ブレイクで球をキッチンに出せずブレイク交代
+  breakFailed,
+
+  /// 15球を入れ切ってラック終了
+  rackOut,
+
+  /// 目標点に到達して試合終了
+  win,
+}
+
+/// 1イニングの記録
+class RotationInning {
+  RotationInning({
+    required this.rack,
+    required this.player,
+    this.points = 0,
+    this.end,
+  });
+
+  final int rack;
+  final int player;
+  int points;
+
+  /// null は進行中
+  InningEnd? end;
+
+  RotationInning copy() =>
+      RotationInning(rack: rack, player: player, points: points, end: end);
+}
+
+/// 選手ごとの成績（イニング記録から集計）
+class RotationStats {
+  const RotationStats({
+    required this.innings,
+    required this.points,
+    required this.misses,
+    required this.fouls,
+    required this.highRun,
+    required this.completedRacks,
+    required this.pointsInCompletedRacks,
+  });
+
+  /// イニング数（ブレイク交代で撞かずに終わったものは除く）
+  final int innings;
+  final int points;
+  final int misses;
+  final int fouls;
+
+  /// 1イニングの最高得点
+  final int highRun;
+  final int completedRacks;
+  final int pointsInCompletedRacks;
+
+  double get pointsPerInning => innings == 0 ? 0 : points / innings;
+
+  /// 終了したラックの平均得点
+  double get pointsPerRack =>
+      completedRacks == 0 ? 0 : pointsInCompletedRacks / completedRacks;
+}
+
 class RotationGame {
   RotationGame({List<int>? targets, List<int>? extensions, int breaker = 0})
       : targets = List<int>.of(targets ?? const [defaultTarget, defaultTarget]),
@@ -16,7 +88,9 @@ class RotationGame {
           extensions ?? const [defaultExtensions, defaultExtensions],
         ),
         _breaker = breaker,
-        _shooter = breaker;
+        _shooter = breaker {
+    _openInning();
+  }
 
   static const int defaultTarget = 120;
   static const int ballCount = 15;
@@ -37,6 +111,9 @@ class RotationGame {
 
   /// 終了したラックごとの [p1得点, p2得点]
   final List<List<int>> rackHistory = <List<int>>[];
+
+  /// 全イニングの記録（最後の要素が進行中のイニング）
+  final List<RotationInning> innings = <RotationInning>[];
 
   int _breaker;
   int _shooter;
@@ -77,10 +154,42 @@ class RotationGame {
     return s;
   }
 
+  /// 進行中のイニング
+  RotationInning get currentInning => innings.last;
+
+  /// 現ラックで [player] が手番を受け取った回数（＝イニング数）
+  int rackInnings(int player) =>
+      innings.where((i) => i.rack == rackNumber && i.player == player).length;
+
+  /// [player] の試合全体の成績
+  RotationStats statsFor(int player) {
+    var count = 0, points = 0, misses = 0, fouls = 0, high = 0;
+    for (final i in innings) {
+      if (i.player != player || i.end == InningEnd.breakFailed) continue;
+      count++;
+      points += i.points;
+      if (i.points > high) high = i.points;
+      if (i.end == InningEnd.miss) misses++;
+      if (i.end == InningEnd.foul) fouls++;
+    }
+    return RotationStats(
+      innings: count,
+      points: points,
+      misses: misses,
+      fouls: fouls,
+      highRun: high,
+      completedRacks: rackHistory.length,
+      pointsInCompletedRacks: rackHistory.fold(0, (a, r) => a + r[player]),
+    );
+  }
+
   void setBreaker(int player) {
     if (isStarted) return;
     _breaker = player;
     _shooter = player;
+    innings
+      ..clear()
+      ..add(RotationInning(rack: rackNumber, player: player));
   }
 
   void setTarget(int player, int value) {
@@ -88,6 +197,12 @@ class RotationGame {
     _push();
     targets[player] = value;
     _checkWinner();
+    // 目標点の変更で勝敗が変わった場合はイニングの状態も合わせる
+    if (winner != null && currentInning.end == null) {
+      currentInning.end = InningEnd.win;
+    } else if (winner == null && currentInning.end == InningEnd.win) {
+      currentInning.end = null;
+    }
   }
 
   /// エクステンション回数の上限を変更する。使用済み回数は維持する。
@@ -118,8 +233,11 @@ class RotationGame {
     pocketed[ball] = _shooter;
     scores[_shooter] += ball;
     fouls[_shooter] = 0;
+    currentInning.points += ball;
     _checkWinner();
-    if (winner == null && pocketed.length == ballCount) {
+    if (winner != null) {
+      currentInning.end = InningEnd.win;
+    } else if (pocketed.length == ballCount) {
       _finishRack();
     }
   }
@@ -131,7 +249,7 @@ class RotationGame {
     _plays++;
     _rackPlays++;
     fouls[_shooter] = 0;
-    _switchShooter();
+    _switchShooter(InningEnd.miss);
   }
 
   /// 手番の選手のファウル。相手にフリーボールで手番交代。
@@ -141,7 +259,7 @@ class RotationGame {
     _plays++;
     _rackPlays++;
     fouls[_shooter]++;
-    _switchShooter();
+    _switchShooter(InningEnd.foul);
   }
 
   /// ブレイクで球をキッチンに出せなかった：ブレイク権を相手に渡して再ブレイク。
@@ -149,8 +267,10 @@ class RotationGame {
     if (!canBreakFail) return;
     _push();
     _plays++;
+    currentInning.end = InningEnd.breakFailed;
     _breaker = 1 - _breaker;
     _shooter = _breaker;
+    _openInning();
   }
 
   void undo() {
@@ -175,9 +295,19 @@ class RotationGame {
     _plays = 0;
     _rackPlays = 0;
     _shooter = _breaker;
+    innings.clear();
+    _openInning();
   }
 
-  void _switchShooter() => _shooter = 1 - _shooter;
+  /// 今のイニングを [end] で閉じて、相手のイニングを始める。
+  void _switchShooter(InningEnd end) {
+    currentInning.end = end;
+    _shooter = 1 - _shooter;
+    _openInning();
+  }
+
+  void _openInning() =>
+      innings.add(RotationInning(rack: rackNumber, player: _shooter));
 
   void _checkWinner() {
     for (var p = 0; p < 2; p++) {
@@ -201,6 +331,8 @@ class RotationGame {
     // 15番が途中でフロックで入っていても、最後に入れた球の人が対象。
     _breaker = _shooter;
     _shooter = _breaker;
+    currentInning.end = InningEnd.rackOut;
+    _openInning(); // rackHistory 追加後なので次のラック番号で始まる
   }
 
   void _push() => _undoStack.add(_Snapshot.of(this));
@@ -215,6 +347,7 @@ class _Snapshot {
         extensionsLeft = List<int>.of(g.extensionsLeft),
         pocketed = Map<int, int>.of(g.pocketed),
         rackHistory = [for (final r in g.rackHistory) List<int>.of(r)],
+        innings = [for (final i in g.innings) i.copy()],
         breaker = g._breaker,
         shooter = g._shooter,
         winner = g.winner,
@@ -228,6 +361,7 @@ class _Snapshot {
   final List<int> extensionsLeft;
   final Map<int, int> pocketed;
   final List<List<int>> rackHistory;
+  final List<RotationInning> innings;
   final int breaker;
   final int shooter;
   final int? winner;
@@ -256,6 +390,9 @@ class _Snapshot {
     g.rackHistory
       ..clear()
       ..addAll(rackHistory);
+    g.innings
+      ..clear()
+      ..addAll([for (final i in innings) i.copy()]);
     g._breaker = breaker;
     g._shooter = shooter;
     g.winner = winner;
